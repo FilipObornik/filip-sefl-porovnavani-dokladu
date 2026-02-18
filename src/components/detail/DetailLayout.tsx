@@ -1,0 +1,195 @@
+import React, { useState } from 'react';
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import { v4 as uuidv4 } from 'uuid';
+import { ComparisonRow, Document, LineItem } from '@/state/types';
+import { useAppContext } from '@/state/app-context';
+import { formatCzechNumber } from '@/lib/number-utils';
+import ItemPanel from './ItemPanel';
+import MatchingArea from './MatchingArea';
+
+interface DetailLayoutProps {
+  row: ComparisonRow;
+  invoiceDoc: Document;
+  receiptDoc: Document;
+}
+
+export default function DetailLayout({
+  row,
+  invoiceDoc,
+  receiptDoc,
+}: DetailLayoutProps) {
+  const { dispatch } = useAppContext();
+  const [activeDragData, setActiveDragData] = useState<{
+    item: LineItem;
+    side: 'invoice' | 'receipt';
+  } | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 5 },
+    })
+  );
+
+  // Compute unmatched items
+  const pairedInvoiceItemIds = new Set(
+    row.matchingPairs
+      .filter((p) => p.invoiceItem !== null)
+      .map((p) => p.invoiceItem!.id)
+  );
+  const pairedReceiptItemIds = new Set(
+    row.matchingPairs
+      .filter((p) => p.receiptItem !== null)
+      .map((p) => p.receiptItem!.id)
+  );
+
+  const unmatchedInvoiceItems = invoiceDoc.items.filter(
+    (item) => !pairedInvoiceItemIds.has(item.id)
+  );
+  const unmatchedReceiptItems = receiptDoc.items.filter(
+    (item) => !pairedReceiptItemIds.has(item.id)
+  );
+
+  function handleDragStart(event: DragStartEvent) {
+    const data = event.active.data.current as {
+      item: LineItem;
+      side: 'invoice' | 'receipt';
+    } | undefined;
+    if (data) {
+      setActiveDragData(data);
+    }
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    setActiveDragData(null);
+    const { active, over } = event;
+    if (!over) return;
+
+    const dragData = active.data.current as {
+      item: LineItem;
+      side: 'invoice' | 'receipt';
+    } | undefined;
+    if (!dragData) return;
+
+    const overId = over.id as string;
+
+    if (overId === 'matching-area') {
+      // Create new pair with just this item
+      const newPair = {
+        id: uuidv4(),
+        invoiceItem: dragData.side === 'invoice' ? dragData.item : null,
+        receiptItem: dragData.side === 'receipt' ? dragData.item : null,
+        reviewed: false,
+      };
+      dispatch({ type: 'ADD_PAIR', rowId: row.id, pair: newPair });
+    } else if (overId.startsWith('pair::')) {
+      // Parse: pair::{pairId}::{targetSide}
+      const parts = overId.split('::');
+      const pairId = parts[1];
+      const targetSide = parts[2] as 'invoice' | 'receipt';
+
+      // Only accept drops on the matching side
+      if (dragData.side === targetSide) {
+        dispatch({
+          type: 'UPDATE_PAIR',
+          rowId: row.id,
+          pairId,
+          updates: {
+            [targetSide === 'invoice' ? 'invoiceItem' : 'receiptItem']:
+              dragData.item,
+          },
+        });
+      }
+    }
+  }
+
+  function handleUnpair(pairId: string, side: 'invoice' | 'receipt') {
+    const pair = row.matchingPairs.find((p) => p.id === pairId);
+    if (!pair) return;
+
+    const otherSide = side === 'invoice' ? 'receiptItem' : 'invoiceItem';
+    if (pair[otherSide] === null) {
+      // Both sides would be null, remove the pair entirely
+      dispatch({ type: 'REMOVE_PAIR', rowId: row.id, pairId });
+    } else {
+      // Just null out the removed side
+      dispatch({
+        type: 'UPDATE_PAIR',
+        rowId: row.id,
+        pairId,
+        updates: {
+          [side === 'invoice' ? 'invoiceItem' : 'receiptItem']: null,
+        },
+      });
+    }
+  }
+
+  return (
+    <DndContext
+      sensors={sensors}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      <div className="grid grid-cols-4 gap-4 h-[calc(100vh-220px)]">
+        {/* Left: Invoice unmatched items */}
+        <div className="col-span-1 overflow-hidden flex flex-col">
+          <ItemPanel
+            title="Faktura"
+            items={unmatchedInvoiceItems}
+            side="invoice"
+            documentId={invoiceDoc.id}
+          />
+        </div>
+
+        {/* Center: Matched pairs */}
+        <div className="col-span-2 overflow-hidden flex flex-col">
+          <MatchingArea row={row} onUnpair={handleUnpair} />
+        </div>
+
+        {/* Right: Receipt unmatched items */}
+        <div className="col-span-1 overflow-hidden flex flex-col">
+          <ItemPanel
+            title="Příjemka"
+            items={unmatchedReceiptItems}
+            side="receipt"
+            documentId={receiptDoc.id}
+          />
+        </div>
+      </div>
+
+      {/* Drag overlay — plain visual clone, no useDraggable hook */}
+      <DragOverlay>
+        {activeDragData ? (
+          <DragOverlayContent
+            item={activeDragData.item}
+            side={activeDragData.side}
+          />
+        ) : null}
+      </DragOverlay>
+    </DndContext>
+  );
+}
+
+function DragOverlayContent({ item, side }: { item: LineItem; side: 'invoice' | 'receipt' }) {
+  const borderColor = side === 'invoice' ? 'border-l-blue-500' : 'border-l-green-500';
+  return (
+    <div
+      className={`bg-white border border-gray-200 border-l-4 ${borderColor} rounded p-3 shadow-lg cursor-grabbing w-64`}
+    >
+      <div className="text-sm font-medium text-gray-800 truncate">
+        {item.item_name}
+      </div>
+      <div className="flex items-center justify-between mt-1 text-xs text-gray-500">
+        <span>{formatCzechNumber(item.quantity, 2)} {item.unit ?? ''}</span>
+        <span className="font-medium text-gray-700">{formatCzechNumber(item.total_price)} Kč</span>
+      </div>
+    </div>
+  );
+}

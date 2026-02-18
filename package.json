@@ -1,0 +1,65 @@
+{
+  "name": "porovnani-dokladu",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Desktop app for comparing invoices vs receipts using AI extraction",
+  "main": "electron/dist/main.js",
+  "scripts": {
+    "dev:next": "next dev -p 3456",
+    "dev:electron": "tsc -p electron/tsconfig.electron.json && electron .",
+    "dev": "concurrently -k -n next,electron \"npm run dev:next\" \"wait-on tcp:3456 && npm run dev:electron\"",
+    "build:next": "next build && next export -o out",
+    "build:electron": "tsc -p electron/tsconfig.electron.json",
+    "build": "npm run build:next && npm run build:electron",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:all": "npm run build && electron-builder --win --mac"
+  },
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "next": "^14.2.21",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.12.0",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@types/uuid": "^10.0.0",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.1.2",
+    "electron": "^33.3.1",
+    "electron-builder": "^25.1.8",
+    "postcss": "^8.5.1",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.3",
+    "wait-on": "^8.0.3"
+  },
+  "build": {
+    "appId": "com.porovnani-dokladu.app",
+    "productName": "Porovnání Dokladů",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "electron/dist/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "public/icon.png"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "public/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

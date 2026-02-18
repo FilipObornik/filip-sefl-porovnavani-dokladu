@@ -1,0 +1,8 @@
+node_modules/
+.next/
+out/
+release/
+electron/dist/
+*.tsbuildinfo
+.DS_Store
+.env.local
