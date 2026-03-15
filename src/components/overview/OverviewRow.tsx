@@ -2,9 +2,9 @@ import { useRouter } from 'next/router';
 import { useAppContext } from '@/state/app-context';
 import { ComparisonRow } from '@/state/types';
 import FileDropZone from './FileDropZone';
-import ValidationCell from '@/components/shared/ValidationCell';
 import { processDocument } from '@/services/document-processor';
 import { autoMatch } from '@/services/matching-service';
+import { formatCzechNumber } from '@/lib/number-utils';
 
 interface OverviewRowProps {
   row: ComparisonRow;
@@ -22,16 +22,6 @@ export default function OverviewRow({ row }: OverviewRowProps) {
     : null;
 
   // Compute totals from ALL document items (not just paired)
-  const totalQuantityInvoice =
-    row.status === 'done' && invoice
-      ? invoice.items.reduce((sum, item) => sum + (item.quantity ?? 0), 0)
-      : null;
-
-  const totalQuantityReceipt =
-    row.status === 'done' && receipt
-      ? receipt.items.reduce((sum, item) => sum + (item.quantity ?? 0), 0)
-      : null;
-
   const totalPriceInvoice =
     row.status === 'done' && invoice
       ? invoice.items.reduce((sum, item) => sum + (item.total_price ?? 0), 0)
@@ -41,6 +31,47 @@ export default function OverviewRow({ row }: OverviewRowProps) {
     row.status === 'done' && receipt
       ? receipt.items.reduce((sum, item) => sum + (item.total_price ?? 0), 0)
       : null;
+
+  const totalVatInvoice =
+    row.status === 'done' && invoice
+      ? invoice.items.reduce((sum, item) => {
+          const vat =
+            item.total_price_with_vat !== null && item.total_price !== null
+              ? item.total_price_with_vat - item.total_price
+              : 0;
+          return sum + vat;
+        }, 0)
+      : null;
+
+  const totalVatReceipt =
+    row.status === 'done' && receipt
+      ? receipt.items.reduce((sum, item) => {
+          const vat =
+            item.total_price_with_vat !== null && item.total_price !== null
+              ? item.total_price_with_vat - item.total_price
+              : 0;
+          return sum + vat;
+        }, 0)
+      : null;
+
+  const documentClosed =
+    row.status === 'done' && receipt
+      ? receipt.items.some((item) => item.document_closed === true)
+      : null;
+
+  const priceMatchColor =
+    totalPriceInvoice !== null && totalPriceReceipt !== null
+      ? Math.abs(totalPriceInvoice - totalPriceReceipt) <= 5
+        ? 'border-green-500'
+        : 'border-red-500'
+      : 'border-gray-300';
+
+  const vatMatchColor =
+    totalVatInvoice !== null && totalVatReceipt !== null
+      ? Math.abs(totalVatInvoice - totalVatReceipt) <= 5
+        ? 'border-green-500'
+        : 'border-red-500'
+      : 'border-gray-300';
 
   const canProcess = row.status === 'ready' || row.status === 'done';
   const isProcessing = row.status === 'processing';
@@ -132,19 +163,36 @@ export default function OverviewRow({ row }: OverviewRowProps) {
         </button>
       </td>
 
-      {/* Mnozstvi (quantity) */}
-      <ValidationCell
-        invoiceValue={totalQuantityInvoice}
-        receiptValue={totalQuantityReceipt}
-        tolerance={0}
-      />
+      {/* Celkova cena faktura */}
+      <td className="px-3 py-2 text-center text-sm whitespace-nowrap">
+        {totalPriceInvoice !== null ? formatCzechNumber(totalPriceInvoice) : '–'}
+      </td>
 
-      {/* Celkova cena (total price) */}
-      <ValidationCell
-        invoiceValue={totalPriceInvoice}
-        receiptValue={totalPriceReceipt}
-        tolerance={5}
-      />
+      {/* Celkova cena prijemka */}
+      <td className={`px-3 py-2 text-center text-sm border-2 whitespace-nowrap ${priceMatchColor}`}>
+        {totalPriceReceipt !== null ? formatCzechNumber(totalPriceReceipt) : '–'}
+      </td>
+
+      {/* DPH faktura */}
+      <td className="px-3 py-2 text-center text-sm whitespace-nowrap">
+        {totalVatInvoice !== null ? formatCzechNumber(totalVatInvoice) : '–'}
+      </td>
+
+      {/* DPH prijemka */}
+      <td className={`px-3 py-2 text-center text-sm border-2 whitespace-nowrap ${vatMatchColor}`}>
+        {totalVatReceipt !== null ? formatCzechNumber(totalVatReceipt) : '–'}
+      </td>
+
+      {/* Doklad uzavren */}
+      <td className="px-3 py-2 text-center text-sm whitespace-nowrap">
+        {documentClosed === null ? (
+          <span className="text-gray-400">–</span>
+        ) : documentClosed ? (
+          <span className="text-green-700 font-bold">✓</span>
+        ) : (
+          <span className="text-red-700 font-bold">✗</span>
+        )}
+      </td>
 
       {/* Detail button */}
       <td className="px-2 py-1 text-center">
