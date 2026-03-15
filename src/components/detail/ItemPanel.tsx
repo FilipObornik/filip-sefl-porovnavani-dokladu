@@ -1,18 +1,21 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { LineItem } from '@/state/types';
+import { Document, LineItem } from '@/state/types';
 import { useAppContext } from '@/state/app-context';
 import DraggableItem from './DraggableItem';
+import DocumentVerifyModal from './DocumentVerifyModal';
 
 interface ItemPanelProps {
   title: string;
   items: LineItem[];
   side: 'invoice' | 'receipt';
   documentId: string;
+  document: Document;
 }
 
-export default function ItemPanel({ title, items, side, documentId }: ItemPanelProps) {
+export default function ItemPanel({ title, items, side, documentId, document: doc }: ItemPanelProps) {
   const { dispatch } = useAppContext();
+  const [verifyOpen, setVerifyOpen] = useState(false);
   const borderColor =
     side === 'invoice' ? 'border-blue-400' : 'border-green-400';
   const bgColor = side === 'invoice' ? 'bg-blue-50' : 'bg-green-50';
@@ -23,7 +26,19 @@ export default function ItemPanel({ title, items, side, documentId }: ItemPanelP
       <div
         className={`${bgColor} border-b-2 ${borderColor} px-3 py-2 rounded-t`}
       >
-        <h3 className={`text-sm font-semibold ${textColor}`}>{title}</h3>
+        <div className="flex items-center justify-between">
+          <h3 className={`text-sm font-semibold ${textColor}`}>{title}</h3>
+          <button
+            onClick={() => setVerifyOpen(true)}
+            className={`p-1 rounded hover:bg-white/50 transition-colors ${textColor}`}
+            title="Ověřit dokument"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          </button>
+        </div>
         <span className="text-xs text-gray-500">
           {items.length} nespárovaných
         </span>
@@ -66,6 +81,10 @@ export default function ItemPanel({ title, items, side, documentId }: ItemPanelP
           + Přidat položku
         </button>
       </div>
+
+      {verifyOpen && (
+        <DocumentVerifyModal document={doc} onClose={() => setVerifyOpen(false)} />
+      )}
     </div>
   );
 }

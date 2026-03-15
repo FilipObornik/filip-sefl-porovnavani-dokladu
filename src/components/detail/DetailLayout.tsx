@@ -145,6 +145,7 @@ export default function DetailLayout({
             items={unmatchedInvoiceItems}
             side="invoice"
             documentId={invoiceDoc.id}
+            document={invoiceDoc}
           />
         </div>
 
@@ -160,6 +161,7 @@ export default function DetailLayout({
             items={unmatchedReceiptItems}
             side="receipt"
             documentId={receiptDoc.id}
+            document={receiptDoc}
           />
         </div>
       </div>

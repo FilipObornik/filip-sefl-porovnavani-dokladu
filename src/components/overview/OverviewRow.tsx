@@ -62,7 +62,7 @@ export default function OverviewRow({ row }: OverviewRowProps) {
       dispatch({ type: 'UPDATE_DOCUMENT', documentId: invoice.id, updates: { items: invoiceItems, status: 'done' } });
       dispatch({ type: 'UPDATE_DOCUMENT', documentId: receipt.id, updates: { items: receiptItems, status: 'done' } });
 
-      const pairs = autoMatch(invoiceItems, receiptItems);
+      const pairs = await autoMatch(invoiceItems, receiptItems);
       dispatch({ type: 'SET_MATCHING_PAIRS', rowId: row.id, pairs });
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Neznámá chyba';
