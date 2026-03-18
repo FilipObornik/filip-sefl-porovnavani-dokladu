@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { Document, LineItem } from '@/state/types';
+import { Document, LineItem, VERIFY_TOLERANCE } from '@/state/types';
 import { useAppContext } from '@/state/app-context';
 import { formatCzechNumber, parseCzechNumber } from '@/lib/number-utils';
 import InlineEditable from './InlineEditable';
@@ -320,8 +320,6 @@ function EditedMark() {
     </span>
   );
 }
-
-const VERIFY_TOLERANCE = 1;
 
 function VerifyCell({
   label,

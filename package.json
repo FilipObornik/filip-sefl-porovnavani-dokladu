@@ -8,7 +8,7 @@
     "dev:next": "next dev -p 3456",
     "dev:electron": "tsc -p electron/tsconfig.electron.json && electron .",
     "dev": "concurrently -k -n next,electron \"npm run dev:next\" \"wait-on tcp:3456 && npm run dev:electron\"",
-    "build:next": "next build && next export -o out",
+    "build:next": "next build",
     "build:electron": "tsc -p electron/tsconfig.electron.json",
     "build": "npm run build:next && npm run build:electron",
     "dist:win": "npm run build && electron-builder --win",
