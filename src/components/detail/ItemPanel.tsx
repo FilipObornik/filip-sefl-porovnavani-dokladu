@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Document, LineItem } from '@/state/types';
+import { Document, LineItem, VerifyStatus, VERIFY_TOLERANCE } from '@/state/types';
 import { useAppContext } from '@/state/app-context';
+import { formatCzechNumber } from '@/lib/number-utils';
+import { CalcTotals } from './DetailLayout';
 import DraggableItem from './DraggableItem';
 import DocumentVerifyModal from './DocumentVerifyModal';
 
@@ -11,27 +13,30 @@ interface ItemPanelProps {
   side: 'invoice' | 'receipt';
   documentId: string;
   document: Document;
+  calcTotals?: CalcTotals | null;
+  verifyOk?: VerifyStatus;
 }
 
-export default function ItemPanel({ title, items, side, documentId, document: doc }: ItemPanelProps) {
+export default function ItemPanel({ title, items, side, documentId, document: doc, calcTotals, verifyOk }: ItemPanelProps) {
   const { dispatch } = useAppContext();
   const [verifyOpen, setVerifyOpen] = useState(false);
-  const borderColor =
-    side === 'invoice' ? 'border-blue-400' : 'border-green-400';
+  const borderColor = side === 'invoice' ? 'border-blue-400' : 'border-green-400';
   const bgColor = side === 'invoice' ? 'bg-blue-50' : 'bg-green-50';
   const textColor = side === 'invoice' ? 'text-blue-700' : 'text-green-700';
 
+  const dt = doc.documentTotals;
+  const hasDocTotals = dt && (dt.total_price !== null || dt.total_vat !== null || dt.total_price_with_vat !== null);
+
   return (
     <div className="flex flex-col h-full">
-      <div
-        className={`${bgColor} border-b-2 ${borderColor} px-3 py-2 rounded-t`}
-      >
-        <div className="flex items-center justify-between">
+      <div className={`${bgColor} border-b-2 ${borderColor} px-3 py-2 rounded-t`}>
+        {/* Title row */}
+        <div className="flex items-center justify-between mb-2">
           <h3 className={`text-sm font-semibold ${textColor}`}>{title}</h3>
           <button
             onClick={() => setVerifyOpen(true)}
             className={`p-1 rounded hover:bg-white/50 transition-colors ${textColor}`}
-            title="Ověřit dokument"
+            title="Zobrazit detail dokladu"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
@@ -39,8 +44,60 @@ export default function ItemPanel({ title, items, side, documentId, document: do
             </svg>
           </button>
         </div>
+
+        {/* Totals table */}
+        {calcTotals && (
+          <div className="text-xs mb-2">
+            {hasDocTotals && (
+              <div className="grid grid-cols-3 gap-x-1 text-gray-400 mb-0.5 font-medium">
+                <span></span>
+                <span>Spočítáno</span>
+                <span>Na dokladu</span>
+              </div>
+            )}
+            <TotalsRow
+              label="Bez DPH"
+              calc={calcTotals.price}
+              stated={hasDocTotals ? dt?.total_price ?? null : null}
+            />
+            <TotalsRow
+              label="DPH"
+              calc={calcTotals.vat}
+              stated={hasDocTotals ? dt?.total_vat ?? null : null}
+            />
+            <TotalsRow
+              label="S DPH"
+              calc={calcTotals.priceWithVat}
+              stated={hasDocTotals ? dt?.total_price_with_vat ?? null : null}
+              bold
+            />
+          </div>
+        )}
+
+        {/* Verification verdict */}
+        {verifyOk === 'ok' && (
+          <div className="text-xs font-semibold px-2 py-1 rounded mb-1 bg-green-200 text-green-800">
+            ✓ Součty přesně sedí s dokladem
+          </div>
+        )}
+        {verifyOk === 'tolerance' && (
+          <div className="text-xs font-semibold px-2 py-1 rounded mb-1 bg-amber-100 text-amber-800 border border-amber-300">
+            ~ Drobný rozdíl (v toleranci ±{VERIFY_TOLERANCE} Kč) — v pořádku
+          </div>
+        )}
+        {verifyOk === 'error' && (
+          <div className="text-xs font-semibold px-2 py-1 rounded mb-1 bg-red-200 text-red-800">
+            ✗ Součty nesedí s dokladem
+          </div>
+        )}
+        {verifyOk === null && calcTotals && (
+          <div className="text-xs text-gray-400 italic mb-1">
+            Doklad nemá celkové součty k ověření
+          </div>
+        )}
+
         <span className="text-xs text-gray-500">
-          {items.length} nespárovaných
+          {items.length} {items.length === 1 ? 'nespárovaná položka' : items.length >= 2 && items.length <= 4 ? 'nespárované položky' : 'nespárovaných položek'}
         </span>
       </div>
 
@@ -85,6 +142,43 @@ export default function ItemPanel({ title, items, side, documentId, document: do
       {verifyOpen && (
         <DocumentVerifyModal document={doc} onClose={() => setVerifyOpen(false)} />
       )}
+    </div>
+  );
+}
+
+function TotalsRow({
+  label,
+  calc,
+  stated,
+  bold,
+}: {
+  label: string;
+  calc: number;
+  stated: number | null;
+  bold?: boolean;
+}) {
+  const textClass = bold ? 'font-semibold text-gray-700' : 'text-gray-600';
+
+  if (stated === null) {
+    return (
+      <div className={`flex justify-between ${textClass}`}>
+        <span className="text-gray-400">{label}:</span>
+        <span>{formatCzechNumber(calc)} Kč</span>
+      </div>
+    );
+  }
+
+  const diff = Math.abs(calc - stated);
+  const rowStatus: VerifyStatus = diff === 0 ? 'ok' : diff <= VERIFY_TOLERANCE ? 'tolerance' : 'error';
+  const statedColor = rowStatus === 'ok' ? 'text-green-700' : rowStatus === 'tolerance' ? 'text-amber-700' : 'text-red-700';
+
+  return (
+    <div className={`grid grid-cols-3 gap-x-1 ${textClass}`}>
+      <span className="text-gray-400">{label}:</span>
+      <span>{formatCzechNumber(calc)} Kč</span>
+      <span className={statedColor}>
+        {formatCzechNumber(stated)} Kč
+      </span>
     </div>
   );
 }

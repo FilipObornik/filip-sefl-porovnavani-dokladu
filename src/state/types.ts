@@ -1,3 +1,8 @@
+/** 'ok' = přesná shoda, 'tolerance' = rozdíl do ±5 Kč, 'error' = mimo toleranci, null = data nejsou */
+export type VerifyStatus = 'ok' | 'tolerance' | 'error' | null;
+
+export const VERIFY_TOLERANCE = 5;
+
 export interface DocumentTotals {
   total_price: number | null;
   total_vat: number | null;

@@ -3,20 +3,24 @@ import { useRouter } from 'next/router';
 import { useAppContext } from '@/state/app-context';
 import { compareDocuments } from '@/services/comparison-service';
 import { formatCzechNumber } from '@/lib/number-utils';
-import { Document } from '@/state/types';
+import { Document, VerifyStatus, VERIFY_TOLERANCE } from '@/state/types';
 import DetailLayout from '@/components/detail/DetailLayout';
 
-const VERIFY_TOLERANCE = 1;
-
-/** Returns true/false/null (null = data not available) */
-function docTotalsMatch(doc: Document, calcPrice: number, calcVat: number, calcWithVat: number): boolean | null {
+/** 'ok' = přesná shoda, 'tolerance' = rozdíl do ±5 Kč, 'error' = mimo toleranci, null = data nejsou */
+function docTotalsMatch(doc: Document, calcPrice: number, calcVat: number, calcWithVat: number): VerifyStatus {
   const t = doc.documentTotals;
   if (!t) return null;
   if (t.total_price === null && t.total_vat === null && t.total_price_with_vat === null) return null;
-  const priceOk = t.total_price === null || Math.abs(calcPrice - t.total_price) <= VERIFY_TOLERANCE;
-  const vatOk = t.total_vat === null || Math.abs(calcVat - t.total_vat) <= VERIFY_TOLERANCE;
-  const withVatOk = t.total_price_with_vat === null || Math.abs(calcWithVat - t.total_price_with_vat) <= VERIFY_TOLERANCE;
-  return priceOk && vatOk && withVatOk;
+
+  const diffs = [
+    t.total_price !== null ? Math.abs(calcPrice - t.total_price) : null,
+    t.total_vat !== null ? Math.abs(calcVat - t.total_vat) : null,
+    t.total_price_with_vat !== null ? Math.abs(calcWithVat - t.total_price_with_vat) : null,
+  ].filter((d): d is number => d !== null);
+
+  if (diffs.some((d) => d > VERIFY_TOLERANCE)) return 'error';
+  if (diffs.some((d) => d > 0)) return 'tolerance';
+  return 'ok';
 }
 
 export default function DetailPage() {
@@ -134,18 +138,6 @@ export default function DetailPage() {
                 {comparison.checksumValid ? 'Vše OK' : 'Neshoda'}
               </div>
 
-              {/* Document totals verification */}
-              {(invoiceVerify !== null || receiptVerify !== null) && (
-                <div className="flex items-center gap-2 ml-2 pl-2 border-l border-gray-200">
-                  <span className="text-xs text-gray-400">Ověření součtů:</span>
-                  {invoiceVerify !== null && (
-                    <DocVerifyBadge label="Faktura" ok={invoiceVerify} />
-                  )}
-                  {receiptVerify !== null && (
-                    <DocVerifyBadge label="Příjemka" ok={receiptVerify} />
-                  )}
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -157,6 +149,10 @@ export default function DetailPage() {
           row={row}
           invoiceDoc={invoiceDoc}
           receiptDoc={receiptDoc}
+          invoiceCalcTotals={comparison ? { price: comparison.totalPriceInvoice, vat: comparison.totalVatInvoice, priceWithVat: comparison.totalPriceWithVatInvoice } : null}
+          receiptCalcTotals={comparison ? { price: comparison.totalPriceReceipt, vat: comparison.totalVatReceipt, priceWithVat: comparison.totalPriceWithVatReceipt } : null}
+          invoiceVerify={invoiceVerify}
+          receiptVerify={receiptVerify}
         />
       </main>
     </div>
@@ -193,15 +189,3 @@ function SummaryBadge({
   );
 }
 
-function DocVerifyBadge({ label, ok }: { label: string; ok: boolean }) {
-  return (
-    <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${
-        ok ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-      }`}
-      title={ok ? 'Spočítané součty odpovídají hodnotám na dokladu' : 'Spočítané součty se liší od hodnot na dokladu'}
-    >
-      {label} {ok ? '✓' : '✗'}
-    </span>
-  );
-}

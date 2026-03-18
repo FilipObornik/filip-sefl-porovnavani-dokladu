@@ -9,22 +9,36 @@ import {
   useSensors,
 } from '@dnd-kit/core';
 import { v4 as uuidv4 } from 'uuid';
-import { ComparisonRow, Document, LineItem } from '@/state/types';
+import { ComparisonRow, Document, LineItem, VerifyStatus } from '@/state/types';
 import { useAppContext } from '@/state/app-context';
 import { formatCzechNumber } from '@/lib/number-utils';
 import ItemPanel from './ItemPanel';
 import MatchingArea from './MatchingArea';
 
+export interface CalcTotals {
+  price: number;
+  vat: number;
+  priceWithVat: number;
+}
+
 interface DetailLayoutProps {
   row: ComparisonRow;
   invoiceDoc: Document;
   receiptDoc: Document;
+  invoiceCalcTotals?: CalcTotals | null;
+  receiptCalcTotals?: CalcTotals | null;
+  invoiceVerify?: VerifyStatus;
+  receiptVerify?: VerifyStatus;
 }
 
 export default function DetailLayout({
   row,
   invoiceDoc,
   receiptDoc,
+  invoiceCalcTotals,
+  receiptCalcTotals,
+  invoiceVerify,
+  receiptVerify,
 }: DetailLayoutProps) {
   const { dispatch } = useAppContext();
   const [activeDragData, setActiveDragData] = useState<{
@@ -144,6 +158,8 @@ export default function DetailLayout({
             side="invoice"
             documentId={invoiceDoc.id}
             document={invoiceDoc}
+            calcTotals={invoiceCalcTotals}
+            verifyOk={invoiceVerify}
           />
         </div>
 
@@ -160,6 +176,8 @@ export default function DetailLayout({
             side="receipt"
             documentId={receiptDoc.id}
             document={receiptDoc}
+            calcTotals={receiptCalcTotals}
+            verifyOk={receiptVerify}
           />
         </div>
       </div>
