@@ -1,3 +1,9 @@
+export interface DocumentTotals {
+  total_price: number | null;
+  total_vat: number | null;
+  total_price_with_vat: number | null;
+}
+
 export interface LineItem {
   id: string;
   item_name: string;
@@ -11,6 +17,8 @@ export interface LineItem {
   document_closed: boolean | null;
   /** Fields that were calculated (not directly extracted from the document). */
   derived_fields?: string[];
+  /** Fields that were manually edited by the user. */
+  edited_fields?: string[];
 }
 
 export interface Document {
@@ -23,6 +31,8 @@ export interface Document {
   items: LineItem[];
   error?: string;
   rawData: string;
+  /** Document-level totals extracted directly from the document header (for verification). */
+  documentTotals?: DocumentTotals;
 }
 
 export interface MatchingPair {

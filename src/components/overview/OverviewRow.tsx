@@ -87,15 +87,15 @@ export default function OverviewRow({ row }: OverviewRowProps) {
     dispatch({ type: 'UPDATE_DOCUMENT', documentId: receipt.id, updates: { status: 'processing' } });
 
     try {
-      const [invoiceItems, receiptItems] = await Promise.all([
+      const [invoiceResult, receiptResult] = await Promise.all([
         processDocument(invoice),
         processDocument(receipt),
       ]);
 
-      dispatch({ type: 'UPDATE_DOCUMENT', documentId: invoice.id, updates: { items: invoiceItems, status: 'done' } });
-      dispatch({ type: 'UPDATE_DOCUMENT', documentId: receipt.id, updates: { items: receiptItems, status: 'done' } });
+      dispatch({ type: 'UPDATE_DOCUMENT', documentId: invoice.id, updates: { items: invoiceResult.items, status: 'done', documentTotals: invoiceResult.documentTotals ?? undefined } });
+      dispatch({ type: 'UPDATE_DOCUMENT', documentId: receipt.id, updates: { items: receiptResult.items, status: 'done', documentTotals: receiptResult.documentTotals ?? undefined } });
 
-      const pairs = await autoMatch(invoiceItems, receiptItems);
+      const pairs = await autoMatch(invoiceResult.items, receiptResult.items);
       dispatch({ type: 'SET_MATCHING_PAIRS', rowId: row.id, pairs });
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Neznámá chyba';

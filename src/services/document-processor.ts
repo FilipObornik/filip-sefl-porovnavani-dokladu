@@ -1,33 +1,45 @@
 import { v4 as uuidv4 } from 'uuid';
-import { Document, LineItem } from '../state/types';
+import { Document, DocumentTotals, LineItem } from '../state/types';
 import { OPENROUTER_API_KEY, OPENROUTER_MODEL } from '../config/api-keys';
 import { parseCzechNumber } from '../lib/number-utils';
+
+export interface ProcessDocumentResult {
+  items: LineItem[];
+  documentTotals: DocumentTotals | null;
+}
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const TIMEOUT_MS = 60_000;
 
-const EXTRACTION_PROMPT = `Analyzuj tento dokument a vytěž z něj tabulková data o položkách/produktech.
-Vrať POUZE JSON pole objektů s těmito klíči:
-- item_name: string (název produktu/položky)
-- quantity: number | null (počet MJ)
-- unit: string | null (měrná jednotka, např. ks, kg)
-- unit_price: number | null (cena za MJ bez DPH)
-- total_price: number | null (celková cena bez DPH)
-- total_price_with_vat: number | null (celková cena s DPH)
-- vat_rate: number | null (sazba DPH v %)
-- sku: string | null (kód produktu/SKU)
-- document_closed: boolean | null (je doklad uzavřen?)
+const EXTRACTION_PROMPT = `Analyzuj tento dokument a vytěž z něj data.
+Vrať JSON objekt s těmito klíči:
+
+1. "items": pole objektů s položkami/produkty, každý s klíči:
+   - item_name: string (název produktu/položky)
+   - quantity: number | null (počet MJ)
+   - unit: string | null (měrná jednotka, např. ks, kg)
+   - unit_price: number | null (cena za MJ bez DPH)
+   - total_price: number | null (celková cena bez DPH)
+   - total_price_with_vat: number | null (celková cena s DPH)
+   - vat_rate: number | null (sazba DPH v %)
+   - sku: string | null (kód produktu/SKU)
+   - document_closed: boolean | null (je doklad uzavřen?)
+
+2. "document_totals": objekt s celkovými hodnotami přímo z dokladu (z patičky/záhlaví dokladu, NE součtem položek):
+   - total_price: number | null (celková cena bez DPH dle dokladu)
+   - total_vat: number | null (celková DPH dle dokladu)
+   - total_price_with_vat: number | null (celková cena s DPH dle dokladu)
 
 Pravidla:
 - Čísla převeď na JavaScript Number formát (1.200,50 → 1200.50)
 - Pokud hodnota v dokumentu chybí, vrať null
 - Zachovej českou diakritiku v názvech
-- Vrať POUZE JSON pole, žádný další text`;
+- Vrať POUZE JSON objekt, žádný další text`;
 
 /**
- * Extract line items from a document image using Gemini via OpenRouter.
+ * Extract line items and document-level totals from a document image using Gemini via OpenRouter.
  */
-export async function processDocument(doc: Document): Promise<LineItem[]> {
+export async function processDocument(doc: Document): Promise<ProcessDocumentResult> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
@@ -86,8 +98,10 @@ export async function processDocument(doc: Document): Promise<LineItem[]> {
       throw new Error('AI vrátila prázdnou odpověď. Zkuste dokument nahrát znovu.');
     }
 
-    const rawItems = parseJsonResponse(content);
-    return rawItems.map((item: Record<string, unknown>) => deriveLineItemFields(normalizeLineItem(item)));
+    const { rawItems, rawTotals } = parseFullResponse(content);
+    const items = rawItems.map((item: Record<string, unknown>) => deriveLineItemFields(normalizeLineItem(item)));
+    const documentTotals = normalizeDocumentTotals(rawTotals);
+    return { items, documentTotals };
   } catch (error: unknown) {
     clearTimeout(timeoutId);
 
@@ -108,49 +122,92 @@ export async function processDocument(doc: Document): Promise<LineItem[]> {
   }
 }
 
+interface ParsedResponse {
+  rawItems: Record<string, unknown>[];
+  rawTotals: Record<string, unknown> | null;
+}
+
 /**
- * Try to parse JSON array from the AI response content.
- * Handles direct JSON, markdown code blocks, and raw array patterns.
+ * Parse the AI response into items array and document_totals object.
+ * Handles direct JSON objects, markdown code blocks, and legacy bare arrays.
  */
-function parseJsonResponse(content: string): Record<string, unknown>[] {
-  // 1. Try direct JSON.parse
-  try {
-    const parsed = JSON.parse(content);
-    if (Array.isArray(parsed)) return parsed;
-    // Sometimes the model wraps the array in an object
-    if (parsed && typeof parsed === 'object') {
-      const values = Object.values(parsed);
-      for (const val of values) {
-        if (Array.isArray(val)) return val as Record<string, unknown>[];
+function parseFullResponse(content: string): ParsedResponse {
+  const tryExtract = (parsed: unknown): ParsedResponse | null => {
+    if (!parsed || typeof parsed !== 'object') return null;
+
+    // Expected shape: { items: [...], document_totals: {...} }
+    if (Array.isArray(parsed)) {
+      return { rawItems: parsed as Record<string, unknown>[], rawTotals: null };
+    }
+
+    const obj = parsed as Record<string, unknown>;
+
+    // Find items array — try "items" key first, then any array value
+    let rawItems: Record<string, unknown>[] | null = null;
+    if (Array.isArray(obj.items)) {
+      rawItems = obj.items as Record<string, unknown>[];
+    } else {
+      for (const val of Object.values(obj)) {
+        if (Array.isArray(val)) {
+          rawItems = val as Record<string, unknown>[];
+          break;
+        }
       }
     }
+    if (!rawItems) return null;
+
+    const rawTotals =
+      obj.document_totals && typeof obj.document_totals === 'object' && !Array.isArray(obj.document_totals)
+        ? (obj.document_totals as Record<string, unknown>)
+        : null;
+
+    return { rawItems, rawTotals };
+  };
+
+  // 1. Try direct JSON.parse
+  try {
+    const result = tryExtract(JSON.parse(content));
+    if (result) return result;
   } catch {
-    // continue to fallback strategies
+    // continue
   }
 
-  // 2. Try extracting from markdown code blocks
+  // 2. Try markdown code blocks
   const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (codeBlockMatch) {
     try {
-      const parsed = JSON.parse(codeBlockMatch[1].trim());
-      if (Array.isArray(parsed)) return parsed;
+      const result = tryExtract(JSON.parse(codeBlockMatch[1].trim()));
+      if (result) return result;
     } catch {
       // continue
     }
   }
 
-  // 3. Try finding a raw JSON array pattern
+  // 3. Legacy: try finding a raw JSON array
   const arrayMatch = content.match(/\[[\s\S]*\]/);
   if (arrayMatch) {
     try {
       const parsed = JSON.parse(arrayMatch[0]);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) return { rawItems: parsed, rawTotals: null };
     } catch {
       // continue
     }
   }
 
   throw new Error('Nepodařilo se zpracovat odpověď AI. Vrácená data nejsou ve správném formátu.');
+}
+
+/**
+ * Normalize raw document_totals object from AI into DocumentTotals.
+ */
+function normalizeDocumentTotals(raw: Record<string, unknown> | null): DocumentTotals | null {
+  if (!raw) return null;
+  const total_price = toNumber(raw.total_price);
+  const total_vat = toNumber(raw.total_vat);
+  const total_price_with_vat = toNumber(raw.total_price_with_vat);
+  // Return null if all fields are null (AI found nothing)
+  if (total_price === null && total_vat === null && total_price_with_vat === null) return null;
+  return { total_price, total_vat, total_price_with_vat };
 }
 
 /**

@@ -75,11 +75,12 @@ export default function PairBox({ pair, onUnpair, rowId }: PairBoxProps) {
       parsedValue = parseCzechNumber(value);
     }
 
-    // Manual edit clears the derived flag for this field
+    // Manual edit clears derived flag and marks field as edited
     const updatedItem = {
       ...item,
       [field]: parsedValue,
       derived_fields: (item.derived_fields ?? []).filter((f) => f !== field),
+      edited_fields: Array.from(new Set([...(item.edited_fields ?? []), field as string])),
     };
     const updatedItems = items.map((i) => (i.id === itemId ? updatedItem : i));
     dispatch({
@@ -105,6 +106,8 @@ export default function PairBox({ pair, onUnpair, rowId }: PairBoxProps) {
 
     const isDerived = (item: LineItem, field: string) =>
       (item.derived_fields ?? []).includes(field);
+    const isEdited = (item: LineItem, field: string) =>
+      (item.edited_fields ?? []).includes(field);
 
     return (
       <div className="space-y-2">
@@ -125,6 +128,9 @@ export default function PairBox({ pair, onUnpair, rowId }: PairBoxProps) {
               {isDerived(item, 'quantity') && (
                 <span title="Dopočítáno" className="text-amber-500 text-[10px] leading-none">~</span>
               )}
+              {isEdited(item, 'quantity') && (
+                <span title="Ručně upraveno" className="text-blue-500 text-[10px] leading-none">✎</span>
+              )}
               <span className="text-gray-400">{item.unit ?? ''}</span>
             </div>
             <div className="mt-0.5 text-xs flex items-center gap-1">
@@ -136,6 +142,9 @@ export default function PairBox({ pair, onUnpair, rowId }: PairBoxProps) {
               />
               {isDerived(item, 'total_price') && (
                 <span title="Dopočítáno" className="text-amber-500 text-[10px] leading-none">~</span>
+              )}
+              {isEdited(item, 'total_price') && (
+                <span title="Ručně upraveno" className="text-blue-500 text-[10px] leading-none">✎</span>
               )}
             </div>
             <button
