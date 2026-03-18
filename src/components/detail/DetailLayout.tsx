@@ -144,12 +144,13 @@ export default function DetailLayout({
   }
 
   return (
+    <div className="flex-1 min-h-0 flex flex-col">
     <DndContext
       sensors={sensors}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="grid grid-cols-4 gap-4 h-[calc(100vh-220px)]">
+      <div className="grid grid-cols-4 gap-4 flex-1 min-h-0">
         {/* Left: Invoice unmatched items */}
         <div className="col-span-1 overflow-hidden flex flex-col">
           <ItemPanel
@@ -192,6 +193,7 @@ export default function DetailLayout({
         ) : null}
       </DragOverlay>
     </DndContext>
+    </div>
   );
 }
 

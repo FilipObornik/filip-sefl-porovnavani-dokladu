@@ -80,10 +80,10 @@ export default function DetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="max-w-screen-2xl mx-auto px-4 py-3">
+        <div className="px-6 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <button
@@ -144,7 +144,7 @@ export default function DetailPage() {
       </header>
 
       {/* Main content */}
-      <main className="flex-1 max-w-screen-2xl mx-auto w-full px-4 py-4">
+      <main className="flex-1 w-full px-6 py-4 overflow-hidden flex flex-col">
         <DetailLayout
           row={row}
           invoiceDoc={invoiceDoc}
