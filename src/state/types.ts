@@ -9,6 +9,8 @@ export interface LineItem {
   vat_rate: number | null;
   sku: string | null;
   document_closed: boolean | null;
+  /** Fields that were calculated (not directly extracted from the document). */
+  derived_fields?: string[];
 }
 
 export interface Document {
@@ -25,8 +27,8 @@ export interface Document {
 
 export interface MatchingPair {
   id: string;
-  invoiceItem: LineItem | null;
-  receiptItem: LineItem | null;
+  invoiceItems: LineItem[];
+  receiptItems: LineItem[];
   reviewed: boolean;
 }
 

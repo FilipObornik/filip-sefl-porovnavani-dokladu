@@ -40,14 +40,10 @@ export default function DetailLayout({
 
   // Compute unmatched items
   const pairedInvoiceItemIds = new Set(
-    row.matchingPairs
-      .filter((p) => p.invoiceItem !== null)
-      .map((p) => p.invoiceItem!.id)
+    row.matchingPairs.flatMap((p) => p.invoiceItems).map((i) => i.id)
   );
   const pairedReceiptItemIds = new Set(
-    row.matchingPairs
-      .filter((p) => p.receiptItem !== null)
-      .map((p) => p.receiptItem!.id)
+    row.matchingPairs.flatMap((p) => p.receiptItems).map((i) => i.id)
   );
 
   const unmatchedInvoiceItems = invoiceDoc.items.filter(
@@ -80,12 +76,12 @@ export default function DetailLayout({
 
     const overId = over.id as string;
 
-    if (overId === 'matching-area') {
+    if (overId === 'new-pair' || overId === 'matching-area') {
       // Create new pair with just this item
       const newPair = {
         id: uuidv4(),
-        invoiceItem: dragData.side === 'invoice' ? dragData.item : null,
-        receiptItem: dragData.side === 'receipt' ? dragData.item : null,
+        invoiceItems: dragData.side === 'invoice' ? [dragData.item] : [],
+        receiptItems: dragData.side === 'receipt' ? [dragData.item] : [],
         reviewed: false,
       };
       dispatch({ type: 'ADD_PAIR', rowId: row.id, pair: newPair });
@@ -97,36 +93,38 @@ export default function DetailLayout({
 
       // Only accept drops on the matching side
       if (dragData.side === targetSide) {
+        const pair = row.matchingPairs.find((p) => p.id === pairId);
+        if (!pair) return;
+        const itemsKey = targetSide === 'invoice' ? 'invoiceItems' : 'receiptItems';
+        const currentItems = pair[itemsKey];
+        // Prevent duplicate
+        if (currentItems.some((i) => i.id === dragData.item.id)) return;
         dispatch({
           type: 'UPDATE_PAIR',
           rowId: row.id,
           pairId,
-          updates: {
-            [targetSide === 'invoice' ? 'invoiceItem' : 'receiptItem']:
-              dragData.item,
-          },
+          updates: { [itemsKey]: [...currentItems, dragData.item] },
         });
       }
     }
   }
 
-  function handleUnpair(pairId: string, side: 'invoice' | 'receipt') {
+  function handleUnpair(pairId: string, side: 'invoice' | 'receipt', itemId: string) {
     const pair = row.matchingPairs.find((p) => p.id === pairId);
     if (!pair) return;
 
-    const otherSide = side === 'invoice' ? 'receiptItem' : 'invoiceItem';
-    if (pair[otherSide] === null) {
-      // Both sides would be null, remove the pair entirely
+    const itemsKey = side === 'invoice' ? 'invoiceItems' : 'receiptItems';
+    const otherKey = side === 'invoice' ? 'receiptItems' : 'invoiceItems';
+    const newItems = pair[itemsKey].filter((i) => i.id !== itemId);
+
+    if (newItems.length === 0 && pair[otherKey].length === 0) {
       dispatch({ type: 'REMOVE_PAIR', rowId: row.id, pairId });
     } else {
-      // Just null out the removed side
       dispatch({
         type: 'UPDATE_PAIR',
         rowId: row.id,
         pairId,
-        updates: {
-          [side === 'invoice' ? 'invoiceItem' : 'receiptItem']: null,
-        },
+        updates: { [itemsKey]: newItems },
       });
     }
   }

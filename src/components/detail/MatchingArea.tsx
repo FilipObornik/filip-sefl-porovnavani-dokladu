@@ -5,7 +5,24 @@ import PairBox from './PairBox';
 
 interface MatchingAreaProps {
   row: ComparisonRow;
-  onUnpair: (pairId: string, side: 'invoice' | 'receipt') => void;
+  onUnpair: (pairId: string, side: 'invoice' | 'receipt', itemId: string) => void;
+}
+
+function NewPairDropZone() {
+  const { isOver, setNodeRef } = useDroppable({ id: 'new-pair' });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`mb-3 border-2 border-dashed rounded-lg py-2 px-3 text-center text-xs transition-colors ${
+        isOver
+          ? 'border-purple-400 bg-purple-50 text-purple-600'
+          : 'border-gray-300 text-gray-400'
+      }`}
+    >
+      + Přetáhněte sem pro nový pár
+    </div>
+  );
 }
 
 export default function MatchingArea({ row, onUnpair }: MatchingAreaProps) {
@@ -30,8 +47,10 @@ export default function MatchingArea({ row, onUnpair }: MatchingAreaProps) {
           isOver ? 'bg-purple-50 ring-2 ring-purple-300' : 'bg-gray-50'
         }`}
       >
+        <NewPairDropZone />
+
         {row.matchingPairs.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-sm text-gray-400 italic text-center">
+          <div className="flex items-center justify-center h-[80%] text-sm text-gray-400 italic text-center">
             Přetáhněte položky pro napárování
           </div>
         ) : (

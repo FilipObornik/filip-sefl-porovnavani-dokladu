@@ -49,19 +49,16 @@ export function compareRow(pairs: MatchingPair[]): RowComparison {
   let totalVatReceipt = 0;
 
   for (const pair of pairs) {
-    // Quantity
-    totalQuantityInvoice += pair.invoiceItem?.quantity ?? 0;
-    totalQuantityReceipt += pair.receiptItem?.quantity ?? 0;
-
-    // Price (total_price without VAT)
-    totalPriceInvoice += pair.invoiceItem?.total_price ?? 0;
-    totalPriceReceipt += pair.receiptItem?.total_price ?? 0;
-
-    // VAT = total_price_with_vat - total_price
-    const invoiceVat = (pair.invoiceItem?.total_price_with_vat ?? 0) - (pair.invoiceItem?.total_price ?? 0);
-    const receiptVat = (pair.receiptItem?.total_price_with_vat ?? 0) - (pair.receiptItem?.total_price ?? 0);
-    totalVatInvoice += invoiceVat;
-    totalVatReceipt += receiptVat;
+    for (const item of pair.invoiceItems) {
+      totalQuantityInvoice += item.quantity ?? 0;
+      totalPriceInvoice += item.total_price ?? 0;
+      totalVatInvoice += (item.total_price_with_vat ?? 0) - (item.total_price ?? 0);
+    }
+    for (const item of pair.receiptItems) {
+      totalQuantityReceipt += item.quantity ?? 0;
+      totalPriceReceipt += item.total_price ?? 0;
+      totalVatReceipt += (item.total_price_with_vat ?? 0) - (item.total_price ?? 0);
+    }
   }
 
   const quantityDiff = totalQuantityInvoice - totalQuantityReceipt;

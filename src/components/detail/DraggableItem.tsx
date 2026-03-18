@@ -35,7 +35,7 @@ export default function DraggableItem({ item, side }: DraggableItemProps) {
         isDragging ? 'opacity-50 shadow-lg z-50' : ''
       }`}
     >
-      <div className="text-sm font-medium text-gray-800 truncate">
+      <div className="text-sm font-medium text-gray-800 break-words">
         {item.item_name}
       </div>
       <div className="flex items-center justify-between mt-1 text-xs text-gray-500">

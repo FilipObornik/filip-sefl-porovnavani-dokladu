@@ -109,8 +109,8 @@ async function aiMatch(invoiceItems: LineItem[], receiptItems: LineItem[]): Prom
 
       pairs.push({
         id: uuidv4(),
-        invoiceItem: invoiceItems[ii],
-        receiptItem: receiptItems[ri],
+        invoiceItems: [invoiceItems[ii]],
+        receiptItems: [receiptItems[ri]],
         reviewed: false,
       });
     }
@@ -155,8 +155,8 @@ function levenshteinMatch(invoiceItems: LineItem[], receiptItems: LineItem[]): M
       usedReceiptIds.add(bestMatch.id);
       pairs.push({
         id: uuidv4(),
-        invoiceItem,
-        receiptItem: bestMatch,
+        invoiceItems: [invoiceItem],
+        receiptItems: [bestMatch],
         reviewed: false,
       });
     }

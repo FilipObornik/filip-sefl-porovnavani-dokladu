@@ -86,36 +86,44 @@ export default function FileDropZone({
     e.target.value = '';
   };
 
+  const isLocked = doc !== null;
+
   return (
     <td className={`px-2 py-1 ${className}`}>
       <div
         className={`
           relative rounded-md border-2 border-dashed px-3 py-2 text-center text-sm
-          cursor-pointer transition-colors min-w-[140px]
-          ${isDragOver ? 'border-blue-500 bg-blue-50' : 'border-gray-300'}
-          ${doc ? '' : 'hover:border-gray-400'}
+          transition-colors min-w-[140px]
+          ${isLocked
+            ? 'border-gray-300 cursor-default'
+            : isDragOver
+              ? 'border-blue-500 bg-blue-50 cursor-pointer'
+              : 'border-gray-300 hover:border-gray-400 cursor-pointer'
+          }
         `}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        onClick={handleClick}
-        title={doc ? doc.name : 'Klikněte nebo přetáhněte soubor'}
+        onDragOver={isLocked ? undefined : handleDragOver}
+        onDragLeave={isLocked ? undefined : handleDragLeave}
+        onDrop={isLocked ? undefined : handleDrop}
+        onClick={isLocked ? undefined : handleClick}
+        title={isLocked ? doc.name : 'Klikněte nebo přetáhněte soubor'}
       >
         {doc ? (
-          <span className="truncate block max-w-[160px]" title={doc.name}>
+          <span className="break-all block" title={doc.name}>
             {doc.name}
           </span>
         ) : (
           <span className="italic text-gray-500">{'< není vložen >'}</span>
         )}
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".pdf,.jpg,.jpeg,.png"
-          className="hidden"
-          onChange={handleInputChange}
-        />
+        {!isLocked && (
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.jpg,.jpeg,.png"
+            className="hidden"
+            onChange={handleInputChange}
+          />
+        )}
       </div>
     </td>
   );

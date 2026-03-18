@@ -87,7 +87,7 @@ export async function processDocument(doc: Document): Promise<LineItem[]> {
     }
 
     const rawItems = parseJsonResponse(content);
-    return rawItems.map((item: Record<string, unknown>) => normalizeLineItem(item));
+    return rawItems.map((item: Record<string, unknown>) => deriveLineItemFields(normalizeLineItem(item)));
   } catch (error: unknown) {
     clearTimeout(timeoutId);
 
@@ -170,6 +170,52 @@ function normalizeLineItem(raw: Record<string, unknown>): LineItem {
     sku: toNullableString(raw.sku),
     document_closed: typeof raw.document_closed === 'boolean' ? raw.document_closed : null,
   };
+}
+
+/**
+ * Fill in missing LineItem fields that can be derived from other present values.
+ * Tracks which fields were calculated in derived_fields[].
+ */
+function deriveLineItemFields(item: LineItem): LineItem {
+  const derived: string[] = [];
+  let { total_price, unit_price, total_price_with_vat, vat_rate, quantity } = item;
+
+  // total_price from quantity × unit_price
+  if (total_price === null && quantity !== null && unit_price !== null) {
+    total_price = round2(quantity * unit_price);
+    derived.push('total_price');
+  }
+
+  // unit_price from total_price ÷ quantity
+  if (unit_price === null && total_price !== null && quantity !== null && quantity !== 0) {
+    unit_price = round2(total_price / quantity);
+    derived.push('unit_price');
+  }
+
+  // total_price_with_vat from total_price × (1 + vat_rate/100)
+  if (total_price_with_vat === null && total_price !== null && vat_rate !== null) {
+    total_price_with_vat = round2(total_price * (1 + vat_rate / 100));
+    derived.push('total_price_with_vat');
+  }
+
+  // vat_rate from total_price and total_price_with_vat
+  if (vat_rate === null && total_price !== null && total_price !== 0 && total_price_with_vat !== null) {
+    vat_rate = round2((total_price_with_vat / total_price - 1) * 100);
+    derived.push('vat_rate');
+  }
+
+  return {
+    ...item,
+    total_price,
+    unit_price,
+    total_price_with_vat,
+    vat_rate,
+    ...(derived.length > 0 ? { derived_fields: derived } : {}),
+  };
+}
+
+function round2(v: number): number {
+  return Math.round(v * 100) / 100;
 }
 
 function toNumber(value: unknown): number | null {

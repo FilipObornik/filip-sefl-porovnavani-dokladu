@@ -53,7 +53,7 @@ export default function InlineEditable({
   return (
     <span
       onDoubleClick={startEdit}
-      className={`cursor-pointer hover:bg-yellow-50 rounded px-0.5 truncate inline-block ${className}`}
+      className={`cursor-pointer hover:bg-yellow-50 rounded px-0.5 break-words inline-block ${className}`}
       title="Dvakrát klikněte pro úpravu"
     >
       {displayValue || value || '–'}

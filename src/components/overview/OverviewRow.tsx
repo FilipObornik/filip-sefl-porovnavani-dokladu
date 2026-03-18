@@ -1,3 +1,4 @@
+import React, { useState } from 'react';
 import { useRouter } from 'next/router';
 import { useAppContext } from '@/state/app-context';
 import { ComparisonRow } from '@/state/types';
@@ -13,6 +14,7 @@ interface OverviewRowProps {
 export default function OverviewRow({ row }: OverviewRowProps) {
   const { state, dispatch } = useAppContext();
   const router = useRouter();
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const invoice = row.invoiceId
     ? state.invoices.find((d) => d.id === row.invoiceId) ?? null
@@ -109,7 +111,12 @@ export default function OverviewRow({ row }: OverviewRowProps) {
   };
 
   const handleRemove = () => {
+    setConfirmDelete(true);
+  };
+
+  const handleConfirmDelete = () => {
     dispatch({ type: 'REMOVE_ROW', rowId: row.id });
+    setConfirmDelete(false);
   };
 
   const handleNoteChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -117,6 +124,31 @@ export default function OverviewRow({ row }: OverviewRowProps) {
   };
 
   return (
+    <>
+    {confirmDelete && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+        <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm w-full mx-4">
+          <h2 className="text-base font-semibold text-gray-800 mb-2">Smazat řádek?</h2>
+          <p className="text-sm text-gray-600 mb-5">
+            Tato akce je nevratná. Budou smazány i nahrané dokumenty a napárované položky.
+          </p>
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="px-4 py-1.5 text-sm rounded border border-gray-300 text-gray-700 hover:bg-gray-100"
+            >
+              Zrušit
+            </button>
+            <button
+              onClick={handleConfirmDelete}
+              className="px-4 py-1.5 text-sm rounded bg-red-600 text-white hover:bg-red-700 font-medium"
+            >
+              Smazat
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     <tr className="border-b border-gray-200 hover:bg-gray-50">
       {/* Poznamka */}
       <td className="px-2 py-1">
@@ -223,5 +255,6 @@ export default function OverviewRow({ row }: OverviewRowProps) {
         </button>
       </td>
     </tr>
+    </>
   );
 }
