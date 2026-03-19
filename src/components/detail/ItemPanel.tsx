@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { v4 as uuidv4 } from 'uuid';
 import { useDroppable } from '@dnd-kit/core';
 import { DND_UNMATCHED_INVOICE, DND_UNMATCHED_RECEIPT } from '@/constants/dnd';
 import { Document, LineItem, VerifyStatus, VERIFY_TOLERANCE } from '@/state/types';
@@ -8,6 +7,7 @@ import { formatCzechNumber } from '@/lib/number-utils';
 import { CalcTotals } from './DetailLayout';
 import DraggableItem from './DraggableItem';
 import DocumentVerifyModal from './DocumentVerifyModal';
+import AddItemModal from './AddItemModal';
 
 interface ItemPanelProps {
   title: string;
@@ -22,6 +22,7 @@ interface ItemPanelProps {
 export default function ItemPanel({ title, items, side, documentId, document: doc, calcTotals, verifyOk }: ItemPanelProps) {
   const { dispatch } = useAppContext();
   const [verifyOpen, setVerifyOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const { isOver, setNodeRef: setDropRef } = useDroppable({
     id: side === 'invoice' ? DND_UNMATCHED_INVOICE : DND_UNMATCHED_RECEIPT,
   });
@@ -124,20 +125,7 @@ export default function ItemPanel({ title, items, side, documentId, document: do
       </div>
       <div className="p-2 border-t border-gray-200">
         <button
-          onClick={() => {
-            const newItem: LineItem = {
-              id: uuidv4(),
-              item_name: 'Nová položka',
-              quantity: null,
-              unit: null,
-              unit_price: null,
-              total_price: null,
-              total_price_with_vat: null,
-              vat_rate: null,
-              sku: null,
-            };
-            dispatch({ type: 'ADD_LINE_ITEM', documentId, item: newItem });
-          }}
+          onClick={() => setAddOpen(true)}
           className={`w-full px-2 py-1.5 text-xs font-medium rounded transition-colors ${
             side === 'invoice'
               ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
@@ -150,6 +138,16 @@ export default function ItemPanel({ title, items, side, documentId, document: do
 
       {verifyOpen && (
         <DocumentVerifyModal document={doc} onClose={() => setVerifyOpen(false)} />
+      )}
+      {addOpen && (
+        <AddItemModal
+          side={side}
+          onAdd={(item) => {
+            dispatch({ type: 'ADD_LINE_ITEM', documentId, item });
+            setAddOpen(false);
+          }}
+          onClose={() => setAddOpen(false)}
+        />
       )}
     </div>
   );
