@@ -16,6 +16,7 @@ export default function OverviewRow({ row }: OverviewRowProps) {
   const { state, dispatch } = useAppContext();
   const router = useRouter();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmReprocess, setConfirmReprocess] = useState(false);
   const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number } | null>(null);
   const statusBtnRef = useRef<HTMLButtonElement>(null);
 
@@ -120,6 +121,15 @@ export default function OverviewRow({ row }: OverviewRowProps) {
 
   const handleProcess = async () => {
     if (!invoice || !receipt) return;
+    if (isDone) {
+      setConfirmReprocess(true);
+      return;
+    }
+    await doProcess();
+  };
+
+  const doProcess = async () => {
+    if (!invoice || !receipt) return;
 
     dispatch({ type: 'UPDATE_ROW_STATUS', rowId: row.id, status: 'processing' });
     dispatch({ type: 'UPDATE_DOCUMENT', documentId: invoice.id, updates: { status: 'processing' } });
@@ -184,6 +194,30 @@ export default function OverviewRow({ row }: OverviewRowProps) {
               className="px-4 py-1.5 text-sm rounded bg-red-600 text-white hover:bg-red-700 font-medium"
             >
               Smazat
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    {confirmReprocess && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+        <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm w-full mx-4">
+          <h2 className="text-base font-semibold text-gray-800 mb-2">Znovu vytěžit doklady?</h2>
+          <p className="text-sm text-gray-600 mb-5">
+            Vytěžení již proběhlo. Opětovným zpracováním dojde k přegenerování výsledků a předchozí vytěžení bude zahozeno.
+          </p>
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={() => setConfirmReprocess(false)}
+              className="px-4 py-1.5 text-sm rounded border border-gray-300 text-gray-700 hover:bg-gray-100"
+            >
+              Zrušit
+            </button>
+            <button
+              onClick={() => { setConfirmReprocess(false); doProcess(); }}
+              className="px-4 py-1.5 text-sm rounded bg-amber-600 text-white hover:bg-amber-700 font-medium"
+            >
+              Zpracovat znovu
             </button>
           </div>
         </div>
