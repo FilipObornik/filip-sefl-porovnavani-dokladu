@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
+import { useDroppable } from '@dnd-kit/core';
+import { DND_UNMATCHED_INVOICE, DND_UNMATCHED_RECEIPT } from '@/constants/dnd';
 import { Document, LineItem, VerifyStatus, VERIFY_TOLERANCE } from '@/state/types';
 import { useAppContext } from '@/state/app-context';
 import { formatCzechNumber } from '@/lib/number-utils';
@@ -20,6 +22,9 @@ interface ItemPanelProps {
 export default function ItemPanel({ title, items, side, documentId, document: doc, calcTotals, verifyOk }: ItemPanelProps) {
   const { dispatch } = useAppContext();
   const [verifyOpen, setVerifyOpen] = useState(false);
+  const { isOver, setNodeRef: setDropRef } = useDroppable({
+    id: side === 'invoice' ? DND_UNMATCHED_INVOICE : DND_UNMATCHED_RECEIPT,
+  });
   const borderColor = side === 'invoice' ? 'border-blue-400' : 'border-green-400';
   const bgColor = side === 'invoice' ? 'bg-blue-50' : 'bg-green-50';
   const textColor = side === 'invoice' ? 'text-blue-700' : 'text-green-700';
@@ -101,7 +106,12 @@ export default function ItemPanel({ title, items, side, documentId, document: do
         </span>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2 bg-gray-50 min-h-[200px]">
+      <div
+        ref={setDropRef}
+        className={`flex-1 overflow-y-auto p-2 min-h-[200px] transition-colors ${
+          isOver ? 'bg-blue-50 ring-2 ring-inset ring-blue-300' : 'bg-gray-50'
+        }`}
+      >
         {items.length === 0 ? (
           <div className="flex items-center justify-center h-full text-sm text-gray-400 italic">
             Žádné nespárované položky
@@ -125,7 +135,6 @@ export default function ItemPanel({ title, items, side, documentId, document: do
               total_price_with_vat: null,
               vat_rate: null,
               sku: null,
-              document_closed: null,
             };
             dispatch({ type: 'ADD_LINE_ITEM', documentId, item: newItem });
           }}

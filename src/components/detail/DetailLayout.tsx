@@ -12,6 +12,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { ComparisonRow, Document, LineItem, VerifyStatus } from '@/state/types';
 import { useAppContext } from '@/state/app-context';
 import { formatCzechNumber } from '@/lib/number-utils';
+import { DND_NEW_PAIR, DND_MATCHING_AREA, DND_UNMATCHED_INVOICE, DND_UNMATCHED_RECEIPT, dndPairDropId, parsePairDropId } from '@/constants/dnd';
 import ItemPanel from './ItemPanel';
 import MatchingArea from './MatchingArea';
 
@@ -44,6 +45,7 @@ export default function DetailLayout({
   const [activeDragData, setActiveDragData] = useState<{
     item: LineItem;
     side: 'invoice' | 'receipt';
+    pairId?: string;
   } | null>(null);
 
   const sensors = useSensors(
@@ -54,10 +56,10 @@ export default function DetailLayout({
 
   // Compute unmatched items
   const pairedInvoiceItemIds = new Set(
-    row.matchingPairs.flatMap((p) => p.invoiceItems).map((i) => i.id)
+    row.matchingPairs.flatMap((p) => p.invoiceItemIds)
   );
   const pairedReceiptItemIds = new Set(
-    row.matchingPairs.flatMap((p) => p.receiptItems).map((i) => i.id)
+    row.matchingPairs.flatMap((p) => p.receiptItemIds)
   );
 
   const unmatchedInvoiceItems = invoiceDoc.items.filter(
@@ -71,6 +73,7 @@ export default function DetailLayout({
     const data = event.active.data.current as {
       item: LineItem;
       side: 'invoice' | 'receipt';
+      pairId?: string;
     } | undefined;
     if (data) {
       setActiveDragData(data);
@@ -80,44 +83,93 @@ export default function DetailLayout({
   function handleDragEnd(event: DragEndEvent) {
     setActiveDragData(null);
     const { active, over } = event;
-    if (!over) return;
 
     const dragData = active.data.current as {
       item: LineItem;
       side: 'invoice' | 'receipt';
+      pairId?: string; // present when dragging from inside a pair
     } | undefined;
     if (!dragData) return;
 
-    const overId = over.id as string;
+    const overId = over?.id as string | undefined;
+    const sourcePairId = dragData.pairId;
 
-    if (overId === 'new-pair' || overId === 'matching-area') {
+    // ── Dragging FROM a pair ──────────────────────────────────────────────
+    if (sourcePairId) {
+      if (!overId) return;
+
+      // Drop on unmatched panel of same side → unpair
+      if (overId === DND_UNMATCHED_INVOICE || overId === DND_UNMATCHED_RECEIPT) {
+        if (overId === `unmatched-${dragData.side}`) {
+          handleUnpair(sourcePairId, dragData.side, dragData.item.id);
+        }
+        return;
+      }
+
+      // Drop on a different pair's side → move there
+      const parsedTarget = parsePairDropId(overId);
+      if (parsedTarget) {
+        const { pairId: targetPairId, side: targetSide } = parsedTarget;
+        if (targetPairId === sourcePairId) return; // same pair, no-op
+        if (dragData.side !== targetSide) return;   // wrong side, no-op
+
+        const targetPair = row.matchingPairs.find((p) => p.id === targetPairId);
+        if (!targetPair) return;
+        const idsKey = targetSide === 'invoice' ? 'invoiceItemIds' : 'receiptItemIds';
+        if (targetPair[idsKey].includes(dragData.item.id)) return; // already there
+
+        // Add to target pair
+        dispatch({ type: 'UPDATE_PAIR', rowId: row.id, pairId: targetPairId, updates: { [idsKey]: [...targetPair[idsKey], dragData.item.id] } });
+        // Remove from source pair
+        handleUnpair(sourcePairId, dragData.side, dragData.item.id);
+        return;
+      }
+
+      // Drop on new-pair / matching-area → extract into its own new pair
+      if (overId === DND_NEW_PAIR || overId === DND_MATCHING_AREA) {
+        const newPair = {
+          id: uuidv4(),
+          invoiceItemIds: dragData.side === 'invoice' ? [dragData.item.id] : [],
+          receiptItemIds: dragData.side === 'receipt' ? [dragData.item.id] : [],
+          reviewed: false,
+        };
+        dispatch({ type: 'ADD_PAIR', rowId: row.id, pair: newPair });
+        handleUnpair(sourcePairId, dragData.side, dragData.item.id);
+      }
+
+      return;
+    }
+
+    // ── Dragging FROM unmatched panel ─────────────────────────────────────
+    if (!overId) return;
+
+    if (overId === DND_NEW_PAIR || overId === DND_MATCHING_AREA) {
       // Create new pair with just this item
       const newPair = {
         id: uuidv4(),
-        invoiceItems: dragData.side === 'invoice' ? [dragData.item] : [],
-        receiptItems: dragData.side === 'receipt' ? [dragData.item] : [],
+        invoiceItemIds: dragData.side === 'invoice' ? [dragData.item.id] : [],
+        receiptItemIds: dragData.side === 'receipt' ? [dragData.item.id] : [],
         reviewed: false,
       };
       dispatch({ type: 'ADD_PAIR', rowId: row.id, pair: newPair });
-    } else if (overId.startsWith('pair::')) {
-      // Parse: pair::{pairId}::{targetSide}
-      const parts = overId.split('::');
-      const pairId = parts[1];
-      const targetSide = parts[2] as 'invoice' | 'receipt';
+    } else {
+      const parsed = parsePairDropId(overId);
+      if (!parsed) return;
+      const { pairId, side: targetSide } = parsed;
 
       // Only accept drops on the matching side
       if (dragData.side === targetSide) {
         const pair = row.matchingPairs.find((p) => p.id === pairId);
         if (!pair) return;
-        const itemsKey = targetSide === 'invoice' ? 'invoiceItems' : 'receiptItems';
-        const currentItems = pair[itemsKey];
+        const idsKey = targetSide === 'invoice' ? 'invoiceItemIds' : 'receiptItemIds';
+        const currentIds = pair[idsKey];
         // Prevent duplicate
-        if (currentItems.some((i) => i.id === dragData.item.id)) return;
+        if (currentIds.includes(dragData.item.id)) return;
         dispatch({
           type: 'UPDATE_PAIR',
           rowId: row.id,
           pairId,
-          updates: { [itemsKey]: [...currentItems, dragData.item] },
+          updates: { [idsKey]: [...currentIds, dragData.item.id] },
         });
       }
     }
@@ -127,18 +179,18 @@ export default function DetailLayout({
     const pair = row.matchingPairs.find((p) => p.id === pairId);
     if (!pair) return;
 
-    const itemsKey = side === 'invoice' ? 'invoiceItems' : 'receiptItems';
-    const otherKey = side === 'invoice' ? 'receiptItems' : 'invoiceItems';
-    const newItems = pair[itemsKey].filter((i) => i.id !== itemId);
+    const idsKey = side === 'invoice' ? 'invoiceItemIds' : 'receiptItemIds';
+    const otherKey = side === 'invoice' ? 'receiptItemIds' : 'invoiceItemIds';
+    const newIds = pair[idsKey].filter((id) => id !== itemId);
 
-    if (newItems.length === 0 && pair[otherKey].length === 0) {
+    if (newIds.length === 0 && pair[otherKey].length === 0) {
       dispatch({ type: 'REMOVE_PAIR', rowId: row.id, pairId });
     } else {
       dispatch({
         type: 'UPDATE_PAIR',
         rowId: row.id,
         pairId,
-        updates: { [itemsKey]: newItems },
+        updates: { [idsKey]: newIds },
       });
     }
   }
@@ -166,7 +218,7 @@ export default function DetailLayout({
 
         {/* Center: Matched pairs */}
         <div className="col-span-2 overflow-hidden flex flex-col">
-          <MatchingArea row={row} onUnpair={handleUnpair} />
+          <MatchingArea row={row} invoiceDoc={invoiceDoc} receiptDoc={receiptDoc} onUnpair={handleUnpair} />
         </div>
 
         {/* Right: Receipt unmatched items */}

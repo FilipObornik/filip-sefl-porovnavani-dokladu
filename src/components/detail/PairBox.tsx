@@ -1,14 +1,50 @@
 import React from 'react';
-import { useDroppable } from '@dnd-kit/core';
-import { MatchingPair, LineItem } from '@/state/types';
+import { useDroppable, useDraggable } from '@dnd-kit/core';
+import { MatchingPair, LineItem, NUMERIC_LINE_ITEM_FIELDS } from '@/state/types';
+import { dndPairDropId } from '@/constants/dnd';
 import { formatCzechNumber, parseCzechNumber } from '@/lib/number-utils';
 import { useAppContext } from '@/state/app-context';
 import InlineEditable from './InlineEditable';
 
 interface PairBoxProps {
   pair: MatchingPair;
+  invoiceItems: LineItem[];
+  receiptItems: LineItem[];
+  invoiceDocId: string;
+  receiptDocId: string;
   onUnpair: (pairId: string, side: 'invoice' | 'receipt', itemId: string) => void;
   rowId: string;
+}
+
+function DraggablePairItem({
+  item,
+  side,
+  pairId,
+  children,
+}: {
+  item: LineItem;
+  side: 'invoice' | 'receipt';
+  pairId: string;
+  children: React.ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `paired-${item.id}`,
+    data: { item, side, pairId },
+  });
+
+  return (
+    <div ref={setNodeRef} style={{ opacity: isDragging ? 0.4 : 1 }}>
+      <span
+        {...listeners}
+        {...attributes}
+        className="absolute -left-5 top-1 opacity-0 group-hover:opacity-100 cursor-grab text-gray-300 hover:text-gray-500 select-none text-base leading-none"
+        title="Přetáhněte pro odpárování"
+      >
+        ⠿
+      </span>
+      {children}
+    </div>
+  );
 }
 
 function PairDropZone({
@@ -21,7 +57,7 @@ function PairDropZone({
   children: React.ReactNode;
 }) {
   const { isOver, setNodeRef } = useDroppable({
-    id: `pair::${pairId}::${side}`,
+    id: dndPairDropId(pairId, side),
   });
 
   return (
@@ -36,10 +72,10 @@ function PairDropZone({
   );
 }
 
-export default function PairBox({ pair, onUnpair, rowId }: PairBoxProps) {
+export default function PairBox({ pair, invoiceItems, receiptItems, invoiceDocId, receiptDocId, onUnpair, rowId }: PairBoxProps) {
   const { dispatch } = useAppContext();
-  const invItems = pair.invoiceItems;
-  const recItems = pair.receiptItems;
+  const invItems = invoiceItems;
+  const recItems = receiptItems;
 
   // Aggregate totals for validation
   const invoiceTotalPrice = invItems.reduce((s, i) => s + (i.total_price ?? 0), 0);
@@ -62,39 +98,32 @@ export default function PairBox({ pair, onUnpair, rowId }: PairBoxProps) {
 
   const handleItemFieldEdit = (
     side: 'invoice' | 'receipt',
-    itemId: string,
+    documentId: string,
+    item: LineItem,
     field: keyof LineItem,
     value: string
   ) => {
-    const items = side === 'invoice' ? invItems : recItems;
-    const item = items.find((i) => i.id === itemId);
-    if (!item) return;
-
     let parsedValue: string | number | boolean | null = value;
-    if (['quantity', 'unit_price', 'total_price', 'total_price_with_vat', 'vat_rate'].includes(field)) {
+    if ((NUMERIC_LINE_ITEM_FIELDS as readonly string[]).includes(field)) {
       parsedValue = parseCzechNumber(value);
     }
 
     // Manual edit clears derived flag and marks field as edited
-    const updatedItem = {
-      ...item,
-      [field]: parsedValue,
-      derived_fields: (item.derived_fields ?? []).filter((f) => f !== field),
-      edited_fields: Array.from(new Set([...(item.edited_fields ?? []), field as string])),
-    };
-    const updatedItems = items.map((i) => (i.id === itemId ? updatedItem : i));
+    const derived_fields = (item.derived_fields ?? []).filter((f) => f !== field);
+    const edited_fields = Array.from(new Set([...(item.edited_fields ?? []), field as string]));
+
     dispatch({
-      type: 'UPDATE_PAIR',
-      rowId,
-      pairId: pair.id,
-      updates: {
-        [side === 'invoice' ? 'invoiceItems' : 'receiptItems']: updatedItems,
-      },
+      type: 'UPDATE_LINE_ITEM',
+      documentId,
+      itemId: item.id,
+      updates: { [field]: parsedValue, derived_fields, edited_fields },
     });
   };
 
-  const renderItemList = (items: LineItem[], side: 'invoice' | 'receipt') => {
+  const renderItemList = (items: LineItem[], side: 'invoice' | 'receipt', documentId: string) => {
     const borderColor = side === 'invoice' ? 'border-l-blue-400' : 'border-l-green-400';
+    const qtyColor = !bothSidesHaveItems ? 'text-gray-500' : qtyMatch ? 'text-green-700' : 'text-red-700';
+    const priceColor = !bothSidesHaveItems ? 'text-gray-500' : priceMatch ? 'text-green-700' : 'text-red-700';
 
     if (items.length === 0) {
       return (
@@ -112,17 +141,18 @@ export default function PairBox({ pair, onUnpair, rowId }: PairBoxProps) {
     return (
       <div className="space-y-2">
         {items.map((item) => (
-          <div key={item.id} className={`border-l-4 ${borderColor} pl-2 relative group`}>
+          <DraggablePairItem key={item.id} item={item} side={side} pairId={pair.id}>
+          <div className={`border-l-4 ${borderColor} pl-2 relative group`}>
             <InlineEditable
               value={item.item_name}
-              onSave={(v) => handleItemFieldEdit(side, item.id, 'item_name', v)}
+              onSave={(v) => handleItemFieldEdit(side, documentId, item, 'item_name', v)}
               className="text-sm font-medium text-gray-800"
             />
             <div className="flex items-center gap-1 mt-1 text-xs">
               <InlineEditable
                 value={item.quantity !== null ? String(item.quantity) : ''}
-                onSave={(v) => handleItemFieldEdit(side, item.id, 'quantity', v)}
-                className="text-gray-500"
+                onSave={(v) => handleItemFieldEdit(side, documentId, item, 'quantity', v)}
+                className={qtyColor}
                 displayValue={formatCzechNumber(item.quantity, 2)}
               />
               {isDerived(item, 'quantity') && (
@@ -136,8 +166,8 @@ export default function PairBox({ pair, onUnpair, rowId }: PairBoxProps) {
             <div className="mt-0.5 text-xs flex items-center gap-1">
               <InlineEditable
                 value={item.total_price !== null ? String(item.total_price) : ''}
-                onSave={(v) => handleItemFieldEdit(side, item.id, 'total_price', v)}
-                className="text-gray-500"
+                onSave={(v) => handleItemFieldEdit(side, documentId, item, 'total_price', v)}
+                className={priceColor}
                 displayValue={`${formatCzechNumber(item.total_price)} Kč`}
               />
               {isDerived(item, 'total_price') && (
@@ -155,6 +185,7 @@ export default function PairBox({ pair, onUnpair, rowId }: PairBoxProps) {
               &times;
             </button>
           </div>
+          </DraggablePairItem>
         ))}
       </div>
     );
@@ -186,7 +217,7 @@ export default function PairBox({ pair, onUnpair, rowId }: PairBoxProps) {
       <div className="flex">
         {/* Invoice side */}
         <PairDropZone pairId={pair.id} side="invoice">
-          {renderItemList(invItems, 'invoice')}
+          {renderItemList(invItems, 'invoice', invoiceDocId)}
         </PairDropZone>
 
         {/* Divider */}
@@ -194,7 +225,7 @@ export default function PairBox({ pair, onUnpair, rowId }: PairBoxProps) {
 
         {/* Receipt side */}
         <PairDropZone pairId={pair.id} side="receipt">
-          {renderItemList(recItems, 'receipt')}
+          {renderItemList(recItems, 'receipt', receiptDocId)}
         </PairDropZone>
       </div>
 

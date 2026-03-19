@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 import { useRouter } from 'next/router';
 import { useAppContext } from '@/state/app-context';
 import { ComparisonRow } from '@/state/types';
@@ -15,6 +16,16 @@ export default function OverviewRow({ row }: OverviewRowProps) {
   const { state, dispatch } = useAppContext();
   const router = useRouter();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number } | null>(null);
+  const statusBtnRef = useRef<HTMLButtonElement>(null);
+
+  const showTooltip = () => {
+    if (!statusBtnRef.current) return;
+    const rect = statusBtnRef.current.getBoundingClientRect();
+    setTooltipPos({ top: rect.bottom + 6, left: rect.left + rect.width / 2 });
+  };
+
+  const hideTooltip = () => setTooltipPos(null);
 
   const invoice = row.invoiceId
     ? state.invoices.find((d) => d.id === row.invoiceId) ?? null
@@ -58,22 +69,50 @@ export default function OverviewRow({ row }: OverviewRowProps) {
 
   const documentClosed =
     row.status === 'done' && receipt
-      ? receipt.items.some((item) => item.document_closed === true)
+      ? receipt.documentClosed
       : null;
 
-  const priceMatchColor =
+  const priceOk =
     totalPriceInvoice !== null && totalPriceReceipt !== null
       ? Math.abs(totalPriceInvoice - totalPriceReceipt) <= 5
-        ? 'border-green-500'
-        : 'border-red-500'
-      : 'border-gray-300';
+      : null;
 
-  const vatMatchColor =
+  const vatOk =
     totalVatInvoice !== null && totalVatReceipt !== null
       ? Math.abs(totalVatInvoice - totalVatReceipt) <= 5
-        ? 'border-green-500'
-        : 'border-red-500'
-      : 'border-gray-300';
+      : null;
+
+  // Compute status warnings
+  const warnings: string[] = [];
+  if (row.status === 'done' && invoice && receipt) {
+    // Unmatched items
+    const pairedInvoiceIds = new Set(row.matchingPairs.flatMap((p) => p.invoiceItemIds));
+    const pairedReceiptIds = new Set(row.matchingPairs.flatMap((p) => p.receiptItemIds));
+    const unpaidInvoice = invoice.items.filter((i) => !pairedInvoiceIds.has(i.id)).length;
+    const unpaidReceipt = receipt.items.filter((i) => !pairedReceiptIds.has(i.id)).length;
+    if (unpaidInvoice > 0) warnings.push(`Nespárované položky na faktuře: ${unpaidInvoice}`);
+    if (unpaidReceipt > 0) warnings.push(`Nespárované položky na příjemce: ${unpaidReceipt}`);
+
+    // Qty / price mismatches per pair
+    let qtyMismatch = 0;
+    let priceMismatch = 0;
+    for (const pair of row.matchingPairs) {
+      const invItems = invoice.items.filter((i) => pair.invoiceItemIds.includes(i.id));
+      const recItems = receipt.items.filter((i) => pair.receiptItemIds.includes(i.id));
+      if (invItems.length > 0 && recItems.length > 0) {
+        const invQty = invItems.reduce((s, i) => s + (i.quantity ?? 0), 0);
+        const recQty = recItems.reduce((s, i) => s + (i.quantity ?? 0), 0);
+        if (invQty !== recQty) qtyMismatch++;
+        const invPrice = invItems.reduce((s, i) => s + (i.total_price ?? 0), 0);
+        const recPrice = recItems.reduce((s, i) => s + (i.total_price ?? 0), 0);
+        if (Math.abs(invPrice - recPrice) > 5) priceMismatch++;
+      }
+    }
+    if (qtyMismatch > 0) warnings.push(`Nesedící množství: ${qtyMismatch} ${qtyMismatch === 1 ? 'pár' : qtyMismatch < 5 ? 'páry' : 'párů'}`);
+    if (priceMismatch > 0) warnings.push(`Nesedící cena v párech: ${priceMismatch} ${priceMismatch === 1 ? 'pár' : priceMismatch < 5 ? 'páry' : 'párů'}`);
+    if (priceOk === false) warnings.push('Celková cena faktury a příjemky nesedí');
+    if (vatOk === false) warnings.push('Celkové DPH faktury a příjemky nesedí');
+  }
 
   const canProcess = row.status === 'ready' || row.status === 'done';
   const isProcessing = row.status === 'processing';
@@ -92,8 +131,8 @@ export default function OverviewRow({ row }: OverviewRowProps) {
         processDocument(receipt),
       ]);
 
-      dispatch({ type: 'UPDATE_DOCUMENT', documentId: invoice.id, updates: { items: invoiceResult.items, status: 'done', documentTotals: invoiceResult.documentTotals ?? undefined } });
-      dispatch({ type: 'UPDATE_DOCUMENT', documentId: receipt.id, updates: { items: receiptResult.items, status: 'done', documentTotals: receiptResult.documentTotals ?? undefined } });
+      dispatch({ type: 'UPDATE_DOCUMENT', documentId: invoice.id, updates: { items: invoiceResult.items, status: 'done', documentTotals: invoiceResult.documentTotals ?? undefined, documentClosed: invoiceResult.documentClosed } });
+      dispatch({ type: 'UPDATE_DOCUMENT', documentId: receipt.id, updates: { items: receiptResult.items, status: 'done', documentTotals: receiptResult.documentTotals ?? undefined, documentClosed: receiptResult.documentClosed } });
 
       const pairs = await autoMatch(invoiceResult.items, receiptResult.items);
       dispatch({ type: 'SET_MATCHING_PAIRS', rowId: row.id, pairs });
@@ -102,7 +141,6 @@ export default function OverviewRow({ row }: OverviewRowProps) {
       dispatch({ type: 'UPDATE_DOCUMENT', documentId: invoice.id, updates: { status: 'error', error: msg } });
       dispatch({ type: 'UPDATE_DOCUMENT', documentId: receipt.id, updates: { status: 'error', error: msg } });
       dispatch({ type: 'UPDATE_ROW_STATUS', rowId: row.id, status: 'error' });
-      alert(`Chyba při zpracování: ${msg}`);
     }
   };
 
@@ -122,6 +160,8 @@ export default function OverviewRow({ row }: OverviewRowProps) {
   const handleNoteChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     dispatch({ type: 'UPDATE_ROW_NOTE', rowId: row.id, note: e.target.value });
   };
+
+  const errorMessage = invoice?.error ?? receipt?.error ?? null;
 
   return (
     <>
@@ -148,6 +188,13 @@ export default function OverviewRow({ row }: OverviewRowProps) {
           </div>
         </div>
       </div>
+    )}
+    {row.status === 'error' && errorMessage && (
+      <tr className="bg-red-50 border-b border-red-200">
+        <td colSpan={11} className="px-3 py-1.5 text-sm text-red-700">
+          <span className="font-medium">Chyba při zpracování:</span> {errorMessage}
+        </td>
+      </tr>
     )}
     <tr className="border-b border-gray-200 hover:bg-gray-50">
       {/* Poznamka */}
@@ -195,24 +242,26 @@ export default function OverviewRow({ row }: OverviewRowProps) {
         </button>
       </td>
 
-      {/* Celkova cena faktura */}
+      {/* Cena faktura / prijemka */}
       <td className="px-3 py-2 text-center text-sm whitespace-nowrap">
-        {totalPriceInvoice !== null ? formatCzechNumber(totalPriceInvoice) : '–'}
+        {totalPriceInvoice !== null && totalPriceReceipt !== null ? (
+          <span className={priceOk ? 'text-green-700 font-medium' : 'text-red-700 font-medium'}>
+            {formatCzechNumber(totalPriceInvoice)} / {formatCzechNumber(totalPriceReceipt)}
+          </span>
+        ) : totalPriceInvoice !== null ? (
+          <span className="text-gray-500">{formatCzechNumber(totalPriceInvoice)} / –</span>
+        ) : '–'}
       </td>
 
-      {/* Celkova cena prijemka */}
-      <td className={`px-3 py-2 text-center text-sm border-2 whitespace-nowrap ${priceMatchColor}`}>
-        {totalPriceReceipt !== null ? formatCzechNumber(totalPriceReceipt) : '–'}
-      </td>
-
-      {/* DPH faktura */}
+      {/* DPH faktura / prijemka */}
       <td className="px-3 py-2 text-center text-sm whitespace-nowrap">
-        {totalVatInvoice !== null ? formatCzechNumber(totalVatInvoice) : '–'}
-      </td>
-
-      {/* DPH prijemka */}
-      <td className={`px-3 py-2 text-center text-sm border-2 whitespace-nowrap ${vatMatchColor}`}>
-        {totalVatReceipt !== null ? formatCzechNumber(totalVatReceipt) : '–'}
+        {totalVatInvoice !== null && totalVatReceipt !== null ? (
+          <span className={vatOk ? 'text-green-700 font-medium' : 'text-red-700 font-medium'}>
+            {formatCzechNumber(totalVatInvoice)} / {formatCzechNumber(totalVatReceipt)}
+          </span>
+        ) : totalVatInvoice !== null ? (
+          <span className="text-gray-500">{formatCzechNumber(totalVatInvoice)} / –</span>
+        ) : '–'}
       </td>
 
       {/* Doklad uzavren */}
@@ -223,6 +272,47 @@ export default function OverviewRow({ row }: OverviewRowProps) {
           <span className="text-green-700 font-bold">✓</span>
         ) : (
           <span className="text-red-700 font-bold">✗</span>
+        )}
+      </td>
+
+      {/* Stav */}
+      <td className="px-3 py-2 text-center text-sm">
+        {row.status === 'done' && (
+          warnings.length === 0 ? (
+            <span className="text-green-600 text-base font-bold">✓</span>
+          ) : (
+            <>
+              <button
+                ref={statusBtnRef}
+                onMouseEnter={showTooltip}
+                onMouseLeave={hideTooltip}
+                onClick={() => tooltipPos ? hideTooltip() : showTooltip()}
+                className={(priceOk === false || vatOk === false)
+                  ? 'text-red-600 text-base font-bold hover:opacity-70'
+                  : 'text-amber-500 text-base font-bold hover:opacity-70'
+                }
+              >
+                {(priceOk === false || vatOk === false) ? '✗' : '⚠'}
+              </button>
+              {tooltipPos && typeof document !== 'undefined' && ReactDOM.createPortal(
+                <div
+                  className="fixed z-[9999] w-72 bg-white border border-gray-200 rounded-lg shadow-xl p-3 text-left pointer-events-none"
+                  style={{ top: tooltipPos.top, left: tooltipPos.left, transform: 'translateX(-50%)' }}
+                >
+                  <p className="text-xs font-semibold text-gray-600 mb-2">Upozornění:</p>
+                  <ul className="space-y-1">
+                    {warnings.map((w, i) => (
+                      <li key={i} className="flex items-start gap-1.5 text-xs text-gray-700">
+                        <span className="mt-0.5 shrink-0 text-amber-500">•</span>
+                        {w}
+                      </li>
+                    ))}
+                  </ul>
+                </div>,
+                document.body
+              )}
+            </>
+          )
         )}
       </td>
 
@@ -248,10 +338,15 @@ export default function OverviewRow({ row }: OverviewRowProps) {
       <td className="px-2 py-1 text-center">
         <button
           onClick={handleRemove}
-          className="text-red-500 hover:text-red-700 font-bold text-lg leading-none px-1"
+          className="text-red-400 hover:text-red-600 transition-colors px-1"
           title="Smazat řádek"
         >
-          &times;
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+            <path d="M10 11v6M14 11v6" />
+            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+          </svg>
         </button>
       </td>
     </tr>

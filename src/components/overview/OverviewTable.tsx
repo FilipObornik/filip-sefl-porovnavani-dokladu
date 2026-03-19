@@ -31,19 +31,16 @@ export default function OverviewTable() {
               Zpracuj
             </th>
             <th className="px-3 py-2 text-center font-semibold whitespace-nowrap">
-              Cena faktura
+              Cena (fak. / příj.)
             </th>
             <th className="px-3 py-2 text-center font-semibold whitespace-nowrap">
-              Cena příjemka
-            </th>
-            <th className="px-3 py-2 text-center font-semibold whitespace-nowrap">
-              DPH faktura
-            </th>
-            <th className="px-3 py-2 text-center font-semibold whitespace-nowrap">
-              DPH příjemka
+              DPH (fak. / příj.)
             </th>
             <th className="px-3 py-2 text-center font-semibold whitespace-nowrap">
               Doklad uzavřen
+            </th>
+            <th className="px-3 py-2 text-center font-semibold whitespace-nowrap">
+              Stav
             </th>
             <th className="px-3 py-2 text-center font-semibold">
               Detail

@@ -1,4 +1,25 @@
-import { LineItem, MatchingPair } from '../state/types';
+import { Document, LineItem, MatchingPair, VERIFY_TOLERANCE, VerifyStatus } from '../state/types';
+
+/**
+ * Compare a document's calculated item totals against the stated document totals.
+ * Returns null if the document has no stated totals to compare against.
+ */
+export function docTotalsMatch(doc: Document, calcPrice: number, calcVat: number, calcWithVat: number): VerifyStatus {
+  const t = doc.documentTotals;
+  if (!t) return null;
+  if (t.total_price === null && t.total_vat === null && t.total_price_with_vat === null) return null;
+
+  const diffs = [
+    t.total_price !== null ? Math.abs(calcPrice - t.total_price) : null,
+    t.total_vat !== null ? Math.abs(calcVat - t.total_vat) : null,
+    t.total_price_with_vat !== null ? Math.abs(calcWithVat - t.total_price_with_vat) : null,
+  ].filter((d): d is number => d !== null);
+
+  if (diffs.some((d) => d > VERIFY_TOLERANCE)) return 'error';
+  if (diffs.some((d) => d > 0)) return 'tolerance';
+  return 'ok';
+}
+
 
 export interface DocumentComparison {
   totalQuantityInvoice: number;
@@ -40,7 +61,10 @@ export interface RowComparison {
  * - Price: +/- 5 CZK tolerance
  * - VAT: +/- 5 CZK tolerance
  */
-export function compareRow(pairs: MatchingPair[]): RowComparison {
+export function compareRow(pairs: MatchingPair[], invoiceItems: LineItem[], receiptItems: LineItem[]): RowComparison {
+  const invoiceMap = new Map(invoiceItems.map((i) => [i.id, i]));
+  const receiptMap = new Map(receiptItems.map((i) => [i.id, i]));
+
   let totalQuantityInvoice = 0;
   let totalQuantityReceipt = 0;
   let totalPriceInvoice = 0;
@@ -49,12 +73,16 @@ export function compareRow(pairs: MatchingPair[]): RowComparison {
   let totalVatReceipt = 0;
 
   for (const pair of pairs) {
-    for (const item of pair.invoiceItems) {
+    for (const id of pair.invoiceItemIds) {
+      const item = invoiceMap.get(id);
+      if (!item) continue;
       totalQuantityInvoice += item.quantity ?? 0;
       totalPriceInvoice += item.total_price ?? 0;
       totalVatInvoice += (item.total_price_with_vat ?? 0) - (item.total_price ?? 0);
     }
-    for (const item of pair.receiptItems) {
+    for (const id of pair.receiptItemIds) {
+      const item = receiptMap.get(id);
+      if (!item) continue;
       totalQuantityReceipt += item.quantity ?? 0;
       totalPriceReceipt += item.total_price ?? 0;
       totalVatReceipt += (item.total_price_with_vat ?? 0) - (item.total_price ?? 0);

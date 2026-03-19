@@ -1,27 +1,9 @@
 import { useEffect, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import { useAppContext } from '@/state/app-context';
-import { compareDocuments } from '@/services/comparison-service';
-import { formatCzechNumber } from '@/lib/number-utils';
-import { Document, VerifyStatus, VERIFY_TOLERANCE } from '@/state/types';
+import { compareDocuments, docTotalsMatch } from '@/services/comparison-service';
 import DetailLayout from '@/components/detail/DetailLayout';
-
-/** 'ok' = přesná shoda, 'tolerance' = rozdíl do ±5 Kč, 'error' = mimo toleranci, null = data nejsou */
-function docTotalsMatch(doc: Document, calcPrice: number, calcVat: number, calcWithVat: number): VerifyStatus {
-  const t = doc.documentTotals;
-  if (!t) return null;
-  if (t.total_price === null && t.total_vat === null && t.total_price_with_vat === null) return null;
-
-  const diffs = [
-    t.total_price !== null ? Math.abs(calcPrice - t.total_price) : null,
-    t.total_vat !== null ? Math.abs(calcVat - t.total_vat) : null,
-    t.total_price_with_vat !== null ? Math.abs(calcWithVat - t.total_price_with_vat) : null,
-  ].filter((d): d is number => d !== null);
-
-  if (diffs.some((d) => d > VERIFY_TOLERANCE)) return 'error';
-  if (diffs.some((d) => d > 0)) return 'tolerance';
-  return 'ok';
-}
+import SummaryBadge from '@/components/detail/SummaryBadge';
 
 export default function DetailPage() {
   const router = useRouter();
@@ -159,33 +141,4 @@ export default function DetailPage() {
   );
 }
 
-function SummaryBadge({
-  label,
-  invoiceVal,
-  receiptVal,
-  valid,
-  suffix,
-}: {
-  label: string;
-  invoiceVal: number;
-  receiptVal: number;
-  valid: boolean;
-  suffix?: string;
-}) {
-  const colorClass = valid ? 'text-green-700' : 'text-red-700';
-  const bgClass = valid ? 'bg-green-50' : 'bg-red-50';
-  const borderClass = valid ? 'border-green-200' : 'border-red-200';
-
-  return (
-    <div
-      className={`flex items-center gap-2 px-3 py-1 rounded border ${bgClass} ${borderClass}`}
-    >
-      <span className="text-gray-600 font-medium">{label}:</span>
-      <span className={`font-medium ${colorClass}`}>
-        {formatCzechNumber(invoiceVal)} / {formatCzechNumber(receiptVal)}
-        {suffix ? ` ${suffix}` : ''}
-      </span>
-    </div>
-  );
-}
 

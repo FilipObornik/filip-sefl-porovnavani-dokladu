@@ -1,10 +1,10 @@
 import { v4 as uuidv4 } from 'uuid';
 import { LineItem, MatchingPair } from '../state/types';
 import { levenshteinSimilarity } from '../lib/levenshtein';
-import { OPENROUTER_API_KEY, OPENROUTER_MODEL } from '../config/api-keys';
+import { OPENROUTER_MODEL } from '../config/api-keys';
+import { OPENROUTER_URL, openRouterHeaders } from '../lib/openrouter-client';
 
 const SIMILARITY_THRESHOLD = 0.40;
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const AI_MATCH_TIMEOUT_MS = 30_000;
 
 /**
@@ -54,12 +54,7 @@ async function aiMatch(invoiceItems: LineItem[], receiptItems: LineItem[]): Prom
   try {
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://porovnani-dokladu.app',
-        'X-Title': 'Porovnani Dokladu',
-      },
+      headers: openRouterHeaders(),
       body: JSON.stringify({
         model: OPENROUTER_MODEL,
         messages: [
@@ -109,8 +104,8 @@ async function aiMatch(invoiceItems: LineItem[], receiptItems: LineItem[]): Prom
 
       pairs.push({
         id: uuidv4(),
-        invoiceItems: [invoiceItems[ii]],
-        receiptItems: [receiptItems[ri]],
+        invoiceItemIds: [invoiceItems[ii].id],
+        receiptItemIds: [receiptItems[ri].id],
         reviewed: false,
       });
     }
@@ -155,8 +150,8 @@ function levenshteinMatch(invoiceItems: LineItem[], receiptItems: LineItem[]): M
       usedReceiptIds.add(bestMatch.id);
       pairs.push({
         id: uuidv4(),
-        invoiceItems: [invoiceItem],
-        receiptItems: [bestMatch],
+        invoiceItemIds: [invoiceItem.id],
+        receiptItemIds: [bestMatch.id],
         reviewed: false,
       });
     }

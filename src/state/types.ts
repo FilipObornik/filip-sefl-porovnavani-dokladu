@@ -20,12 +20,20 @@ export interface LineItem {
   total_price_with_vat: number | null;
   vat_rate: number | null;
   sku: string | null;
-  document_closed: boolean | null;
   /** Fields that were calculated (not directly extracted from the document). */
   derived_fields?: string[];
   /** Fields that were manually edited by the user. */
   edited_fields?: string[];
 }
+
+/** LineItem fields that contain numeric values and need Czech number parsing on edit */
+export const NUMERIC_LINE_ITEM_FIELDS = [
+  'quantity',
+  'unit_price',
+  'total_price',
+  'total_price_with_vat',
+  'vat_rate',
+] as const satisfies (keyof LineItem)[];
 
 export interface Document {
   id: string;
@@ -39,12 +47,14 @@ export interface Document {
   rawData: string;
   /** Document-level totals extracted directly from the document header (for verification). */
   documentTotals?: DocumentTotals;
+  /** Whether the document is marked as closed (e.g. receipt confirmed). */
+  documentClosed: boolean | null;
 }
 
 export interface MatchingPair {
   id: string;
-  invoiceItems: LineItem[];
-  receiptItems: LineItem[];
+  invoiceItemIds: string[];
+  receiptItemIds: string[];
   reviewed: boolean;
 }
 

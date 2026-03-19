@@ -1,14 +1,22 @@
 import { v4 as uuidv4 } from 'uuid';
 import { Document, DocumentTotals, LineItem } from '../state/types';
-import { OPENROUTER_API_KEY, OPENROUTER_MODEL } from '../config/api-keys';
+
+export class DocumentProcessorError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DocumentProcessorError';
+  }
+}
+import { OPENROUTER_MODEL } from '../config/api-keys';
 import { parseCzechNumber } from '../lib/number-utils';
+import { OPENROUTER_URL, openRouterHeaders } from '../lib/openrouter-client';
 
 export interface ProcessDocumentResult {
   items: LineItem[];
   documentTotals: DocumentTotals | null;
+  documentClosed: boolean | null;
 }
 
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const TIMEOUT_MS = 60_000;
 
 const EXTRACTION_PROMPT = `Analyzuj tento dokument a vytěž z něj data.
@@ -23,12 +31,12 @@ Vrať JSON objekt s těmito klíči:
    - total_price_with_vat: number | null (celková cena s DPH)
    - vat_rate: number | null (sazba DPH v %)
    - sku: string | null (kód produktu/SKU)
-   - document_closed: boolean | null (je doklad uzavřen?)
 
 2. "document_totals": objekt s celkovými hodnotami přímo z dokladu (z patičky/záhlaví dokladu, NE součtem položek):
    - total_price: number | null (celková cena bez DPH dle dokladu)
    - total_vat: number | null (celková DPH dle dokladu)
    - total_price_with_vat: number | null (celková cena s DPH dle dokladu)
+   - document_closed: boolean | null (je doklad uzavřen/potvrzený?)
 
 Pravidla:
 - Čísla převeď na JavaScript Number formát (1.200,50 → 1200.50)
@@ -46,12 +54,7 @@ export async function processDocument(doc: Document): Promise<ProcessDocumentRes
   try {
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://porovnani-dokladu.app',
-        'X-Title': 'Porovnani Dokladu',
-      },
+      headers: openRouterHeaders(),
       body: JSON.stringify({
         model: OPENROUTER_MODEL,
         messages: [
@@ -80,45 +83,44 @@ export async function processDocument(doc: Document): Promise<ProcessDocumentRes
 
     if (!response.ok) {
       if (response.status === 401) {
-        throw new Error('Chyba autorizace: Neplatný API klíč pro OpenRouter. Zkontrolujte konfiguraci.');
+        throw new DocumentProcessorError('Chyba autorizace: Neplatný API klíč pro OpenRouter. Zkontrolujte konfiguraci.');
       }
       if (response.status === 429) {
-        throw new Error('Příliš mnoho požadavků: Překročen limit OpenRouter API. Zkuste to znovu za chvíli.');
+        throw new DocumentProcessorError('Příliš mnoho požadavků: Překročen limit OpenRouter API. Zkuste to znovu za chvíli.');
       }
       if (response.status >= 500) {
-        throw new Error(`Chyba serveru OpenRouter (${response.status}). Zkuste to znovu později.`);
+        throw new DocumentProcessorError(`Chyba serveru OpenRouter (${response.status}). Zkuste to znovu později.`);
       }
-      throw new Error(`Chyba při komunikaci s AI službou: HTTP ${response.status}`);
+      throw new DocumentProcessorError(`Chyba při komunikaci s AI službou: HTTP ${response.status}`);
     }
 
     const data = await response.json();
     const content: string = data?.choices?.[0]?.message?.content ?? '';
 
     if (!content) {
-      throw new Error('AI vrátila prázdnou odpověď. Zkuste dokument nahrát znovu.');
+      throw new DocumentProcessorError('AI vrátila prázdnou odpověď. Zkuste dokument nahrát znovu.');
     }
 
     const { rawItems, rawTotals } = parseFullResponse(content);
     const items = rawItems.map((item: Record<string, unknown>) => deriveLineItemFields(normalizeLineItem(item)));
     const documentTotals = normalizeDocumentTotals(rawTotals);
-    return { items, documentTotals };
+    const documentClosed = rawTotals && typeof rawTotals.document_closed === 'boolean'
+      ? rawTotals.document_closed
+      : null;
+    return { items, documentTotals, documentClosed };
   } catch (error: unknown) {
     clearTimeout(timeoutId);
 
     if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error('Časový limit vypršel: AI neodpověděla do 60 sekund. Zkuste to znovu.');
+      throw new DocumentProcessorError('Časový limit vypršel: AI neodpověděla do 60 sekund. Zkuste to znovu.');
     }
 
     // Re-throw our own errors as-is
-    if (error instanceof Error && error.message.startsWith('Chyba') ||
-        error instanceof Error && error.message.startsWith('AI') ||
-        error instanceof Error && error.message.startsWith('Příliš') ||
-        error instanceof Error && error.message.startsWith('Časový') ||
-        error instanceof Error && error.message.startsWith('Nepodařilo')) {
+    if (error instanceof DocumentProcessorError) {
       throw error;
     }
 
-    throw new Error(`Neočekávaná chyba při zpracování dokumentu: ${error instanceof Error ? error.message : String(error)}`);
+    throw new DocumentProcessorError(`Neočekávaná chyba při zpracování dokumentu: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -194,7 +196,7 @@ function parseFullResponse(content: string): ParsedResponse {
     }
   }
 
-  throw new Error('Nepodařilo se zpracovat odpověď AI. Vrácená data nejsou ve správném formátu.');
+  throw new DocumentProcessorError('Nepodařilo se zpracovat odpověď AI. Vrácená data nejsou ve správném formátu.');
 }
 
 /**
@@ -225,7 +227,6 @@ function normalizeLineItem(raw: Record<string, unknown>): LineItem {
     total_price_with_vat: toNumber(raw.total_price_with_vat),
     vat_rate: toNumber(raw.vat_rate),
     sku: toNullableString(raw.sku),
-    document_closed: typeof raw.document_closed === 'boolean' ? raw.document_closed : null,
   };
 }
 

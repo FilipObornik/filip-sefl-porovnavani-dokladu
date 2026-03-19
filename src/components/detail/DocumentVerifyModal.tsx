@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { Document, LineItem, VERIFY_TOLERANCE } from '@/state/types';
+import { Document, LineItem, VERIFY_TOLERANCE, NUMERIC_LINE_ITEM_FIELDS } from '@/state/types';
 import { useAppContext } from '@/state/app-context';
 import { formatCzechNumber, parseCzechNumber } from '@/lib/number-utils';
 import InlineEditable from './InlineEditable';
@@ -23,7 +23,7 @@ export default function DocumentVerifyModal({ document: doc, onClose }: Document
 
   const handleFieldEdit = (item: LineItem, field: keyof LineItem, value: string) => {
     let parsedValue: string | number | boolean | null = value;
-    if (['quantity', 'unit_price', 'total_price', 'total_price_with_vat', 'vat_rate'].includes(field)) {
+    if ((NUMERIC_LINE_ITEM_FIELDS as readonly string[]).includes(field)) {
       parsedValue = parseCzechNumber(value);
     }
     // Manual edit clears derived flag and adds to edited_fields
@@ -265,6 +265,18 @@ export default function DocumentVerifyModal({ document: doc, onClose }: Document
                   </div>
                 </div>
               </div>
+
+              {/* Document closed status */}
+              {doc.documentClosed !== null && (
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-gray-500">Doklad uzavřen:</span>
+                  {doc.documentClosed ? (
+                    <span className="text-green-700 font-semibold">✓ Ano</span>
+                  ) : (
+                    <span className="text-red-700 font-semibold">✗ Ne</span>
+                  )}
+                </div>
+              )}
 
               {/* Extracted document totals + verification */}
               {doc.documentTotals && (

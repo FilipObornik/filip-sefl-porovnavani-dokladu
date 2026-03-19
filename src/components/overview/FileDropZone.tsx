@@ -40,6 +40,7 @@ export default function FileDropZone({
         status: 'pending',
         items: [],
         rawData: base64,
+        documentClosed: null,
       };
 
       dispatch({ type: 'SET_DOCUMENT', rowId, side, document: newDoc });

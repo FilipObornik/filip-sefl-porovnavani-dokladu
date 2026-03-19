@@ -119,7 +119,7 @@ function appReducer(state: AppState, action: AppAction): AppState {
         ...state,
         comparisonRows: state.comparisonRows.map((r) =>
           r.id === action.rowId
-            ? { ...r, matchingPairs: [...r.matchingPairs, action.pair] }
+            ? { ...r, matchingPairs: [action.pair, ...r.matchingPairs] }
             : r
         ),
       };
