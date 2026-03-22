@@ -105,6 +105,14 @@ export default function ItemPanel({ title, items, side, documentId, document: do
         <span className="text-xs text-gray-500">
           {items.length} {items.length === 1 ? 'nespárovaná položka' : items.length >= 2 && items.length <= 4 ? 'nespárované položky' : 'nespárovaných položek'}
         </span>
+        {(() => {
+          const archivedCount = doc.items.filter((i) => i.archived).length;
+          return archivedCount > 0 ? (
+            <div className="mt-1 text-xs font-semibold text-red-700 bg-red-50 px-2 py-0.5 rounded">
+              ⚠ {archivedCount} archivovaných položek
+            </div>
+          ) : null;
+        })()}
       </div>
 
       <div

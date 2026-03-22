@@ -12,7 +12,6 @@ interface PairBoxProps {
   receiptItems: LineItem[];
   invoiceDocId: string;
   receiptDocId: string;
-  onUnpair: (pairId: string, side: 'invoice' | 'receipt', itemId: string) => void;
   rowId: string;
 }
 
@@ -33,15 +32,13 @@ function DraggablePairItem({
   });
 
   return (
-    <div ref={setNodeRef} style={{ opacity: isDragging ? 0.4 : 1 }}>
-      <span
-        {...listeners}
-        {...attributes}
-        className="absolute -left-5 top-1 opacity-0 group-hover:opacity-100 cursor-grab text-gray-300 hover:text-gray-500 select-none text-base leading-none"
-        title="Přetáhněte pro odpárování"
-      >
-        ⠿
-      </span>
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      style={{ opacity: isDragging ? 0.4 : 1 }}
+      className="cursor-grab active:cursor-grabbing"
+    >
       {children}
     </div>
   );
@@ -63,7 +60,7 @@ function PairDropZone({
   return (
     <div
       ref={setNodeRef}
-      className={`w-1/2 min-w-0 min-h-[80px] p-2 rounded transition-colors ${
+      className={`w-1/2 min-w-0 rounded transition-colors ${
         isOver ? 'bg-blue-50 ring-2 ring-blue-300' : ''
       }`}
     >
@@ -72,10 +69,12 @@ function PairDropZone({
   );
 }
 
-export default function PairBox({ pair, invoiceItems, receiptItems, invoiceDocId, receiptDocId, onUnpair, rowId }: PairBoxProps) {
+export default function PairBox({ pair, invoiceItems, receiptItems, invoiceDocId, receiptDocId, rowId }: PairBoxProps) {
   const { dispatch } = useAppContext();
-  const invItems = invoiceItems;
-  const recItems = receiptItems;
+  const invItems = invoiceItems.filter((i) => !i.archived);
+  const recItems = receiptItems.filter((i) => !i.archived);
+  const archivedInvoiceCount = invoiceItems.filter((i) => i.archived).length;
+  const archivedReceiptCount = receiptItems.filter((i) => i.archived).length;
 
   // Aggregate totals for validation
   const invoiceTotalPrice = invItems.reduce((s, i) => s + (i.total_price ?? 0), 0);
@@ -86,15 +85,6 @@ export default function PairBox({ pair, invoiceItems, receiptItems, invoiceDocId
   const bothSidesHaveItems = invItems.length > 0 && recItems.length > 0;
   const priceMatch = bothSidesHaveItems && Math.abs(invoiceTotalPrice - receiptTotalPrice) <= 5;
   const qtyMatch = bothSidesHaveItems && invoiceTotalQty === receiptTotalQty;
-
-  const handleReviewedToggle = () => {
-    dispatch({
-      type: 'UPDATE_PAIR',
-      rowId,
-      pairId: pair.id,
-      updates: { reviewed: !pair.reviewed },
-    });
-  };
 
   const handleItemFieldEdit = (
     side: 'invoice' | 'receipt',
@@ -121,7 +111,10 @@ export default function PairBox({ pair, invoiceItems, receiptItems, invoiceDocId
   };
 
   const renderItemList = (items: LineItem[], side: 'invoice' | 'receipt', documentId: string) => {
-    const borderColor = side === 'invoice' ? 'border-l-blue-400' : 'border-l-green-400';
+    const isInvoice = side === 'invoice';
+    const borderClass = isInvoice
+      ? 'border-l-4 border-l-blue-400'
+      : 'border-r-4 border-r-green-400';
     const qtyColor = !bothSidesHaveItems ? 'text-gray-500' : qtyMatch ? 'text-green-700' : 'text-red-700';
     const priceColor = !bothSidesHaveItems ? 'text-gray-500' : priceMatch ? 'text-green-700' : 'text-red-700';
 
@@ -138,17 +131,20 @@ export default function PairBox({ pair, invoiceItems, receiptItems, invoiceDocId
     const isEdited = (item: LineItem, field: string) =>
       (item.edited_fields ?? []).includes(field);
 
+    const hasError = bothSidesHaveItems && (!qtyMatch || !priceMatch);
+
     return (
-      <div className="space-y-2">
+      <div className="space-y-1">
         {items.map((item) => (
           <DraggablePairItem key={item.id} item={item} side={side} pairId={pair.id}>
-          <div className={`border-l-4 ${borderColor} pl-2 relative group`}>
+          <div className={`${borderClass} px-2 py-0.5 relative group rounded${hasError ? ' bg-red-50' : ''}`}>
             <InlineEditable
               value={item.item_name}
               onSave={(v) => handleItemFieldEdit(side, documentId, item, 'item_name', v)}
-              className="text-sm font-medium text-gray-800"
+              className={`text-sm font-medium text-gray-800${isInvoice ? ' text-right' : ''}`}
             />
-            <div className="flex items-center gap-1 mt-1 text-xs">
+            {/* MJ + cena na jednom řádku */}
+            <div className={`flex items-center gap-1 mt-0.5 text-xs${isInvoice ? ' justify-end' : ''}`}>
               <InlineEditable
                 value={item.quantity !== null ? String(item.quantity) : ''}
                 onSave={(v) => handleItemFieldEdit(side, documentId, item, 'quantity', v)}
@@ -162,8 +158,7 @@ export default function PairBox({ pair, invoiceItems, receiptItems, invoiceDocId
                 <span title="Ručně upraveno" className="text-blue-500 text-[10px] leading-none">✎</span>
               )}
               <span className="text-gray-400">{item.unit ?? ''}</span>
-            </div>
-            <div className="mt-0.5 text-xs flex items-center gap-1">
+              <span className="text-gray-300 mx-0.5">·</span>
               <InlineEditable
                 value={item.total_price !== null ? String(item.total_price) : ''}
                 onSave={(v) => handleItemFieldEdit(side, documentId, item, 'total_price', v)}
@@ -177,13 +172,6 @@ export default function PairBox({ pair, invoiceItems, receiptItems, invoiceDocId
                 <span title="Ručně upraveno" className="text-blue-500 text-[10px] leading-none">✎</span>
               )}
             </div>
-            <button
-              onClick={() => onUnpair(pair.id, side, item.id)}
-              className="absolute -top-1 -right-1 w-5 h-5 bg-red-100 text-red-600 rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-200"
-              title="Odpárovat"
-            >
-              &times;
-            </button>
           </div>
           </DraggablePairItem>
         ))}
@@ -192,32 +180,17 @@ export default function PairBox({ pair, invoiceItems, receiptItems, invoiceDocId
   };
 
   return (
-    <div
-      className={`bg-white border border-gray-200 rounded-lg shadow-sm mb-3 transition-opacity ${
-        pair.reviewed ? 'opacity-60' : ''
-      }`}
-    >
-      {/* Header with reviewed toggle */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-100 bg-gray-50 rounded-t-lg">
-        <label className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-600">
-          <input
-            type="checkbox"
-            checked={pair.reviewed}
-            onChange={handleReviewedToggle}
-            className="rounded border-gray-300 text-green-600 focus:ring-green-500"
-          />
-          Zkontrolováno
-          {pair.reviewed && (
-            <span className="text-green-600 font-bold">&#10003;</span>
-          )}
-        </label>
-      </div>
-
+    <div className="bg-white border border-gray-200 rounded-lg shadow-sm mb-1.5">
       {/* Two-column pair display */}
       <div className="flex">
         {/* Invoice side */}
         <PairDropZone pairId={pair.id} side="invoice">
           {renderItemList(invItems, 'invoice', invoiceDocId)}
+          {archivedInvoiceCount > 0 && (
+            <div className="px-2 py-0.5 text-xs text-red-600 font-medium">
+              ⚠ {archivedInvoiceCount} archivovaná {archivedInvoiceCount === 1 ? 'položka' : archivedInvoiceCount < 5 ? 'položky' : 'položek'}
+            </div>
+          )}
         </PairDropZone>
 
         {/* Divider */}
@@ -226,26 +199,14 @@ export default function PairBox({ pair, invoiceItems, receiptItems, invoiceDocId
         {/* Receipt side */}
         <PairDropZone pairId={pair.id} side="receipt">
           {renderItemList(recItems, 'receipt', receiptDocId)}
+          {archivedReceiptCount > 0 && (
+            <div className="px-2 py-0.5 text-xs text-red-600 font-medium">
+              ⚠ {archivedReceiptCount} archivovaná {archivedReceiptCount === 1 ? 'položka' : archivedReceiptCount < 5 ? 'položky' : 'položek'}
+            </div>
+          )}
         </PairDropZone>
       </div>
 
-      {/* Totals comparison footer (only when both sides have items) */}
-      {bothSidesHaveItems && (
-        <div className="flex border-t border-gray-100 px-2 py-1 text-xs bg-gray-50 rounded-b-lg">
-          <div className="flex-1 flex items-center gap-2">
-            <span className="text-gray-400">Σ ks:</span>
-            <span className={qtyMatch ? 'text-green-700 font-medium' : 'text-red-700 font-medium'}>
-              {formatCzechNumber(invoiceTotalQty, 2)} / {formatCzechNumber(receiptTotalQty, 2)}
-            </span>
-          </div>
-          <div className="flex-1 flex items-center gap-2 justify-end">
-            <span className="text-gray-400">Σ Kč:</span>
-            <span className={priceMatch ? 'text-green-700 font-medium' : 'text-red-700 font-medium'}>
-              {formatCzechNumber(invoiceTotalPrice)} / {formatCzechNumber(receiptTotalPrice)}
-            </span>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

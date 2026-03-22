@@ -24,6 +24,8 @@ export interface LineItem {
   derived_fields?: string[];
   /** Fields that were manually edited by the user. */
   edited_fields?: string[];
+  /** If true, item is hidden from all views and excluded from all totals. */
+  archived?: boolean;
 }
 
 /** LineItem fields that contain numeric values and need Czech number parsing on edit */

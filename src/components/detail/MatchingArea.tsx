@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { ComparisonRow, Document } from '@/state/types';
 import { DND_NEW_PAIR, DND_MATCHING_AREA } from '@/constants/dnd';
@@ -8,7 +8,6 @@ interface MatchingAreaProps {
   row: ComparisonRow;
   invoiceDoc: Document;
   receiptDoc: Document;
-  onUnpair: (pairId: string, side: 'invoice' | 'receipt', itemId: string) => void;
 }
 
 function NewPairDropZone() {
@@ -28,23 +27,60 @@ function NewPairDropZone() {
   );
 }
 
-export default function MatchingArea({ row, invoiceDoc, receiptDoc, onUnpair }: MatchingAreaProps) {
+export default function MatchingArea({ row, invoiceDoc, receiptDoc }: MatchingAreaProps) {
   const { isOver, setNodeRef } = useDroppable({
     id: DND_MATCHING_AREA,
   });
+  const [onlyMismatches, setOnlyMismatches] = useState(false);
 
   const invoiceItemMap = new Map(invoiceDoc.items.map((i) => [i.id, i]));
   const receiptItemMap = new Map(receiptDoc.items.map((i) => [i.id, i]));
 
+  const visiblePairs = onlyMismatches
+    ? row.matchingPairs.filter((pair) => {
+        const invItems = pair.invoiceItemIds
+          .map((id) => invoiceItemMap.get(id))
+          .filter((i) => i !== undefined && !i.archived);
+        const recItems = pair.receiptItemIds
+          .map((id) => receiptItemMap.get(id))
+          .filter((i) => i !== undefined && !i.archived);
+
+        if (invItems.length === 0 || recItems.length === 0) return true;
+
+        const invQty = invItems.reduce((s, i) => s + (i!.quantity ?? 0), 0);
+        const recQty = recItems.reduce((s, i) => s + (i!.quantity ?? 0), 0);
+        const invPrice = invItems.reduce((s, i) => s + (i!.total_price ?? 0), 0);
+        const recPrice = recItems.reduce((s, i) => s + (i!.total_price ?? 0), 0);
+
+        const qtyMatch = invQty === recQty;
+        const priceMatch = Math.abs(invPrice - recPrice) <= 5;
+        return !qtyMatch || !priceMatch;
+      })
+    : row.matchingPairs;
+
   return (
     <div className="flex flex-col h-full">
       <div className="bg-slate-50 border-b-2 border-slate-400 px-3 py-2 rounded-t">
-        <h3 className="text-sm font-semibold text-slate-700">
-          Napárované položky
-        </h3>
-        <span className="text-xs text-gray-500">
-          {row.matchingPairs.length} párů
-        </span>
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-700">
+              Napárované položky
+            </h3>
+            <span className="text-xs text-gray-500">
+              {row.matchingPairs.length} párů
+            </span>
+          </div>
+          <button
+            onClick={() => setOnlyMismatches((v) => !v)}
+            className={`text-xs px-2 py-1 rounded border transition-colors ${
+              onlyMismatches
+                ? 'bg-red-100 text-red-700 border-red-300 font-medium'
+                : 'bg-white text-gray-500 border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            {onlyMismatches ? '✗ Pouze neshody' : 'Pouze neshody'}
+          </button>
+        </div>
       </div>
 
       <div
@@ -59,8 +95,12 @@ export default function MatchingArea({ row, invoiceDoc, receiptDoc, onUnpair }: 
           <div className="flex items-center justify-center h-[80%] text-sm text-gray-400 italic text-center">
             Přetáhněte položky pro napárování
           </div>
+        ) : visiblePairs.length === 0 ? (
+          <div className="flex items-center justify-center h-[80%] text-sm text-gray-400 italic text-center">
+            Žádné neshody
+          </div>
         ) : (
-          row.matchingPairs.map((pair) => {
+          visiblePairs.map((pair) => {
             const invoiceItems = pair.invoiceItemIds
               .map((id) => invoiceItemMap.get(id))
               .filter((i) => i !== undefined);
@@ -76,7 +116,6 @@ export default function MatchingArea({ row, invoiceDoc, receiptDoc, onUnpair }: 
                 receiptItems={receiptItems}
                 invoiceDocId={invoiceDoc.id}
                 receiptDocId={receiptDoc.id}
-                onUnpair={onUnpair}
                 rowId={row.id}
               />
             );

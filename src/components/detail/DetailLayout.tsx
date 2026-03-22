@@ -63,10 +63,10 @@ export default function DetailLayout({
   );
 
   const unmatchedInvoiceItems = invoiceDoc.items.filter(
-    (item) => !pairedInvoiceItemIds.has(item.id)
+    (item) => !item.archived && !pairedInvoiceItemIds.has(item.id)
   );
   const unmatchedReceiptItems = receiptDoc.items.filter(
-    (item) => !pairedReceiptItemIds.has(item.id)
+    (item) => !item.archived && !pairedReceiptItemIds.has(item.id)
   );
 
   function handleDragStart(event: DragStartEvent) {
@@ -218,7 +218,7 @@ export default function DetailLayout({
 
         {/* Center: Matched pairs */}
         <div className="col-span-2 overflow-hidden flex flex-col">
-          <MatchingArea row={row} invoiceDoc={invoiceDoc} receiptDoc={receiptDoc} onUnpair={handleUnpair} />
+          <MatchingArea row={row} invoiceDoc={invoiceDoc} receiptDoc={receiptDoc} />
         </div>
 
         {/* Right: Receipt unmatched items */}

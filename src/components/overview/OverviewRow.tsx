@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { useRouter } from 'next/router';
 import { useAppContext } from '@/state/app-context';
-import { ComparisonRow } from '@/state/types';
+import { ComparisonRow, VERIFY_TOLERANCE } from '@/state/types';
 import FileDropZone from './FileDropZone';
 import { processDocument } from '@/services/document-processor';
 import { autoMatch } from '@/services/matching-service';
@@ -19,6 +19,7 @@ export default function OverviewRow({ row }: OverviewRowProps) {
   const [confirmReprocess, setConfirmReprocess] = useState(false);
   const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number } | null>(null);
   const statusBtnRef = useRef<HTMLButtonElement>(null);
+  const noteRef = useRef<HTMLTextAreaElement>(null);
 
   const showTooltip = () => {
     if (!statusBtnRef.current) return;
@@ -35,20 +36,20 @@ export default function OverviewRow({ row }: OverviewRowProps) {
     ? state.receipts.find((d) => d.id === row.receiptId) ?? null
     : null;
 
-  // Compute totals from ALL document items (not just paired)
+  // Compute totals from ALL document items (not just paired), excluding archived
   const totalPriceInvoice =
     row.status === 'done' && invoice
-      ? invoice.items.reduce((sum, item) => sum + (item.total_price ?? 0), 0)
+      ? invoice.items.filter((i) => !i.archived).reduce((sum, item) => sum + (item.total_price ?? 0), 0)
       : null;
 
   const totalPriceReceipt =
     row.status === 'done' && receipt
-      ? receipt.items.reduce((sum, item) => sum + (item.total_price ?? 0), 0)
+      ? receipt.items.filter((i) => !i.archived).reduce((sum, item) => sum + (item.total_price ?? 0), 0)
       : null;
 
   const totalVatInvoice =
     row.status === 'done' && invoice
-      ? invoice.items.reduce((sum, item) => {
+      ? invoice.items.filter((i) => !i.archived).reduce((sum, item) => {
           const vat =
             item.total_price_with_vat !== null && item.total_price !== null
               ? item.total_price_with_vat - item.total_price
@@ -59,7 +60,7 @@ export default function OverviewRow({ row }: OverviewRowProps) {
 
   const totalVatReceipt =
     row.status === 'done' && receipt
-      ? receipt.items.reduce((sum, item) => {
+      ? receipt.items.filter((i) => !i.archived).reduce((sum, item) => {
           const vat =
             item.total_price_with_vat !== null && item.total_price !== null
               ? item.total_price_with_vat - item.total_price
@@ -83,14 +84,46 @@ export default function OverviewRow({ row }: OverviewRowProps) {
       ? Math.abs(totalVatInvoice - totalVatReceipt) <= 5
       : null;
 
+  // Item counts (non-archived)
+  const invoiceItemCount = invoice ? invoice.items.filter((i) => !i.archived).length : null;
+  const receiptItemCount = receipt ? receipt.items.filter((i) => !i.archived).length : null;
+
+  // Document-level verify: does sum of items match header totals?
+  const invoiceVerifyOk =
+    row.status === 'done' && invoice && totalPriceInvoice !== null &&
+    invoice.documentTotals?.total_price !== null && invoice.documentTotals?.total_price !== undefined
+      ? Math.abs(totalPriceInvoice - invoice.documentTotals.total_price) <= VERIFY_TOLERANCE
+      : null;
+
+  const receiptVerifyOk =
+    row.status === 'done' && receipt && totalPriceReceipt !== null &&
+    receipt.documentTotals?.total_price !== null && receipt.documentTotals?.total_price !== undefined
+      ? Math.abs(totalPriceReceipt - receipt.documentTotals.total_price) <= VERIFY_TOLERANCE
+      : null;
+
+  const verifyFail = invoiceVerifyOk === false || receiptVerifyOk === false;
+  const verifyOk = !verifyFail && (invoiceVerifyOk === true || receiptVerifyOk === true);
+
   // Compute status warnings
   const warnings: string[] = [];
   if (row.status === 'done' && invoice && receipt) {
+    // Archived items
+    const archivedInvoice = invoice.items.filter((i) => i.archived).length;
+    const archivedReceipt = receipt.items.filter((i) => i.archived).length;
+    if (archivedInvoice > 0) warnings.push(`Archivované položky na faktuře: ${archivedInvoice}`);
+    if (archivedReceipt > 0) warnings.push(`Archivované položky na příjemce: ${archivedReceipt}`);
+
+    // Manually edited items
+    const editedInvoice = invoice.items.filter((i) => (i.edited_fields ?? []).length > 0).length;
+    const editedReceipt = receipt.items.filter((i) => (i.edited_fields ?? []).length > 0).length;
+    const totalEdited = editedInvoice + editedReceipt;
+    if (totalEdited > 0) warnings.push(`Ručně upravené položky: ${totalEdited}`);
+
     // Unmatched items
     const pairedInvoiceIds = new Set(row.matchingPairs.flatMap((p) => p.invoiceItemIds));
     const pairedReceiptIds = new Set(row.matchingPairs.flatMap((p) => p.receiptItemIds));
-    const unpaidInvoice = invoice.items.filter((i) => !pairedInvoiceIds.has(i.id)).length;
-    const unpaidReceipt = receipt.items.filter((i) => !pairedReceiptIds.has(i.id)).length;
+    const unpaidInvoice = invoice.items.filter((i) => !i.archived && !pairedInvoiceIds.has(i.id)).length;
+    const unpaidReceipt = receipt.items.filter((i) => !i.archived && !pairedReceiptIds.has(i.id)).length;
     if (unpaidInvoice > 0) warnings.push(`Nespárované položky na faktuře: ${unpaidInvoice}`);
     if (unpaidReceipt > 0) warnings.push(`Nespárované položky na příjemce: ${unpaidReceipt}`);
 
@@ -98,8 +131,8 @@ export default function OverviewRow({ row }: OverviewRowProps) {
     let qtyMismatch = 0;
     let priceMismatch = 0;
     for (const pair of row.matchingPairs) {
-      const invItems = invoice.items.filter((i) => pair.invoiceItemIds.includes(i.id));
-      const recItems = receipt.items.filter((i) => pair.receiptItemIds.includes(i.id));
+      const invItems = invoice.items.filter((i) => !i.archived && pair.invoiceItemIds.includes(i.id));
+      const recItems = receipt.items.filter((i) => !i.archived && pair.receiptItemIds.includes(i.id));
       if (invItems.length > 0 && recItems.length > 0) {
         const invQty = invItems.reduce((s, i) => s + (i.quantity ?? 0), 0);
         const recQty = recItems.reduce((s, i) => s + (i.quantity ?? 0), 0);
@@ -167,9 +200,19 @@ export default function OverviewRow({ row }: OverviewRowProps) {
     setConfirmDelete(false);
   };
 
-  const handleNoteChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleNoteChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     dispatch({ type: 'UPDATE_ROW_NOTE', rowId: row.id, note: e.target.value });
+    e.target.style.height = 'auto';
+    e.target.style.height = e.target.scrollHeight + 'px';
   };
+
+  // Sync textarea height when note changes externally (e.g. load)
+  useEffect(() => {
+    if (noteRef.current) {
+      noteRef.current.style.height = 'auto';
+      noteRef.current.style.height = noteRef.current.scrollHeight + 'px';
+    }
+  }, [row.note]);
 
   const errorMessage = invoice?.error ?? receipt?.error ?? null;
 
@@ -225,20 +268,22 @@ export default function OverviewRow({ row }: OverviewRowProps) {
     )}
     {row.status === 'error' && errorMessage && (
       <tr className="bg-red-50 border-b border-red-200">
-        <td colSpan={11} className="px-3 py-1.5 text-sm text-red-700">
+        <td colSpan={13} className="px-3 py-1.5 text-sm text-red-700">
           <span className="font-medium">Chyba při zpracování:</span> {errorMessage}
         </td>
       </tr>
     )}
     <tr className="border-b border-gray-200 hover:bg-gray-50">
       {/* Poznamka */}
-      <td className="px-2 py-1">
-        <input
-          type="text"
+      <td className="px-2 py-1 align-top">
+        <textarea
+          ref={noteRef}
           value={row.note}
           onChange={handleNoteChange}
           placeholder="Poznámka..."
-          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-400"
+          rows={1}
+          className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 resize-none overflow-y-auto"
+          style={{ minHeight: '30px', maxHeight: '113px' }}
         />
       </td>
 
@@ -272,7 +317,7 @@ export default function OverviewRow({ row }: OverviewRowProps) {
             }
           `}
         >
-          {isProcessing ? 'Zpracovávám...' : 'Zpracuj'}
+          {isProcessing ? 'Počkej' : 'Zpracuj'}
         </button>
       </td>
 
@@ -287,15 +332,39 @@ export default function OverviewRow({ row }: OverviewRowProps) {
         ) : '–'}
       </td>
 
-      {/* DPH faktura / prijemka */}
+      {/* DPH — jen ✓/✗ */}
+      <td className="px-3 py-2 text-center text-sm">
+        {vatOk === null ? (
+          <span className="text-gray-400">–</span>
+        ) : vatOk ? (
+          <span className="text-green-700 font-bold">✓</span>
+        ) : (
+          <span className="text-red-700 font-bold">✗</span>
+        )}
+      </td>
+
+      {/* MJ: počet položek příjemky / faktury */}
       <td className="px-3 py-2 text-center text-sm whitespace-nowrap">
-        {totalVatInvoice !== null && totalVatReceipt !== null ? (
-          <span className={vatOk ? 'text-green-700 font-medium' : 'text-red-700 font-medium'}>
-            {formatCzechNumber(totalVatInvoice)} / {formatCzechNumber(totalVatReceipt)}
+        {receiptItemCount !== null && invoiceItemCount !== null ? (
+          <span className={receiptItemCount === invoiceItemCount ? 'text-green-700 font-medium' : 'text-red-700 font-medium'}>
+            {receiptItemCount}/{invoiceItemCount}
           </span>
-        ) : totalVatInvoice !== null ? (
-          <span className="text-gray-500">{formatCzechNumber(totalVatInvoice)} / –</span>
-        ) : '–'}
+        ) : (
+          <span className="text-gray-400">–</span>
+        )}
+      </td>
+
+      {/* Verify: součet položek vs hlavička dokumentu */}
+      <td className="px-3 py-2 text-center text-sm">
+        {invoiceVerifyOk === null && receiptVerifyOk === null ? (
+          <span className="text-gray-400">–</span>
+        ) : verifyFail ? (
+          <span className="text-red-700 font-bold">✗</span>
+        ) : verifyOk ? (
+          <span className="text-green-700 font-bold">✓</span>
+        ) : (
+          <span className="text-gray-400">–</span>
+        )}
       </td>
 
       {/* Doklad uzavren */}

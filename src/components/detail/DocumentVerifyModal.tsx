@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { Document, LineItem, VERIFY_TOLERANCE, NUMERIC_LINE_ITEM_FIELDS } from '@/state/types';
 import { useAppContext } from '@/state/app-context';
@@ -12,6 +12,7 @@ interface DocumentVerifyModalProps {
 
 export default function DocumentVerifyModal({ document: doc, onClose }: DocumentVerifyModalProps) {
   const { dispatch } = useAppContext();
+  const [showArchived, setShowArchived] = useState(false);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -20,6 +21,15 @@ export default function DocumentVerifyModal({ document: doc, onClose }: Document
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
+
+  const handleArchiveToggle = (item: LineItem) => {
+    dispatch({
+      type: 'UPDATE_LINE_ITEM',
+      documentId: doc.id,
+      itemId: item.id,
+      updates: { archived: !item.archived },
+    });
+  };
 
   const handleFieldEdit = (item: LineItem, field: keyof LineItem, value: string) => {
     let parsedValue: string | number | boolean | null = value;
@@ -50,15 +60,17 @@ export default function DocumentVerifyModal({ document: doc, onClose }: Document
   const typeLabel = doc.type === 'invoice' ? 'Faktura' : 'Příjemka';
   const headerColor = doc.type === 'invoice' ? 'bg-blue-600' : 'bg-green-600';
 
-  // Summaries
-  const totalQuantity = doc.items.reduce((sum, i) => sum + (i.quantity ?? 0), 0);
-  const totalPrice = doc.items.reduce((sum, i) => sum + (i.total_price ?? 0), 0);
-  const totalVat = doc.items.reduce((sum, i) => {
+  // Summaries — only active (non-archived) items
+  const activeItems = doc.items.filter((i) => !i.archived);
+  const archivedItems = doc.items.filter((i) => i.archived);
+  const totalQuantity = activeItems.reduce((sum, i) => sum + (i.quantity ?? 0), 0);
+  const totalPrice = activeItems.reduce((sum, i) => sum + (i.total_price ?? 0), 0);
+  const totalVat = activeItems.reduce((sum, i) => {
     const withVat = i.total_price_with_vat ?? 0;
     const without = i.total_price ?? 0;
     return sum + (withVat - without);
   }, 0);
-  const totalWithVat = doc.items.reduce((sum, i) => sum + (i.total_price_with_vat ?? 0), 0);
+  const totalWithVat = activeItems.reduce((sum, i) => sum + (i.total_price_with_vat ?? 0), 0);
 
   const modal = (
     <div
@@ -111,7 +123,7 @@ export default function DocumentVerifyModal({ document: doc, onClose }: Document
           <div className="w-1/2 flex flex-col min-h-0">
             <div className="px-4 py-2 border-b border-gray-200 bg-gray-50 shrink-0">
               <h3 className="text-sm font-semibold text-gray-700">
-                Vytěžené položky ({doc.items.length})
+                Vytěžené položky ({activeItems.length}{archivedItems.length > 0 ? `, ${archivedItems.length} archivovaných` : ''})
               </h3>
               <div className="flex items-center gap-4 mt-0.5">
                 <p className="text-xs text-gray-400">Dvakrát klikněte na hodnotu pro úpravu</p>
@@ -139,10 +151,11 @@ export default function DocumentVerifyModal({ document: doc, onClose }: Document
                     <th className="px-3 py-2 font-medium">S DPH</th>
                     <th className="px-3 py-2 font-medium">DPH %</th>
                     <th className="px-3 py-2 font-medium">SKU</th>
+                    <th className="px-3 py-2 font-medium"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {doc.items.map((item, idx) => (
+                  {activeItems.map((item, idx) => (
                     <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50">
                       <td className="px-3 py-1.5 text-gray-400">{idx + 1}</td>
                       <td className={`px-3 py-1.5 max-w-[200px] ${isEdited(item, 'item_name') ? 'bg-blue-50' : ''}`}>
@@ -235,10 +248,67 @@ export default function DocumentVerifyModal({ document: doc, onClose }: Document
                           {isEdited(item, 'sku') && <EditedMark />}
                         </div>
                       </td>
+                      <td className="px-2 py-1.5">
+                        <button
+                          onClick={() => handleArchiveToggle(item)}
+                          className="p-1 rounded text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors"
+                          title="Archivovat položku (skryje ji a vyloučí ze součtů)"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="21 8 21 21 3 21 3 8" />
+                            <rect x="1" y="3" width="22" height="5" />
+                            <line x1="10" y1="12" x2="14" y2="12" />
+                          </svg>
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+
+              {/* Archived items section */}
+              {archivedItems.length > 0 && (
+                <div className="border-t border-dashed border-gray-300 mt-1">
+                  <button
+                    onClick={() => setShowArchived((v) => !v)}
+                    className="w-full px-3 py-1.5 text-left text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1"
+                  >
+                    <span>{showArchived ? '▾' : '▸'}</span>
+                    Archivované položky ({archivedItems.length})
+                  </button>
+                  {showArchived && (
+                    <table className="w-full text-xs">
+                      <tbody>
+                        {archivedItems.map((item, idx) => (
+                          <tr key={item.id} className="border-b border-gray-100 bg-gray-50 opacity-60">
+                            <td className="px-3 py-1.5 text-gray-400">{idx + 1}</td>
+                            <td className="px-3 py-1.5 text-gray-500 line-through max-w-[200px]">{item.item_name}</td>
+                            <td className="px-3 py-1.5 text-gray-400">{formatCzechNumber(item.quantity, 2)}</td>
+                            <td className="px-3 py-1.5 text-gray-400">{item.unit ?? ''}</td>
+                            <td className="px-3 py-1.5 text-gray-400">{formatCzechNumber(item.unit_price)}</td>
+                            <td className="px-3 py-1.5 text-gray-400">{formatCzechNumber(item.total_price)}</td>
+                            <td className="px-3 py-1.5 text-gray-400">{formatCzechNumber(item.total_price_with_vat)}</td>
+                            <td className="px-3 py-1.5 text-gray-400">{item.vat_rate !== null ? `${formatCzechNumber(item.vat_rate, 0)} %` : '–'}</td>
+                            <td className="px-3 py-1.5 text-gray-400">{item.sku ?? ''}</td>
+                            <td className="px-2 py-1.5">
+                              <button
+                                onClick={() => handleArchiveToggle(item)}
+                                className="p-1 rounded text-gray-300 hover:text-green-500 hover:bg-green-50 transition-colors"
+                                title="Obnovit položku"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="1 4 1 10 7 10" />
+                                  <path d="M3.51 15a9 9 0 1 0 .49-4.5" />
+                                </svg>
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Summary footer */}
@@ -266,8 +336,8 @@ export default function DocumentVerifyModal({ document: doc, onClose }: Document
                 </div>
               </div>
 
-              {/* Document closed status */}
-              {doc.documentClosed !== null && (
+              {/* Document closed status — only relevant for receipts */}
+              {doc.type === 'receipt' && doc.documentClosed !== null && (
                 <div className="flex items-center gap-2 text-xs">
                   <span className="text-gray-500">Doklad uzavřen:</span>
                   {doc.documentClosed ? (
