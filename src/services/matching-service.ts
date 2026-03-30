@@ -1,8 +1,12 @@
 import { v4 as uuidv4 } from 'uuid';
 import { LineItem, MatchingPair } from '../state/types';
 import { levenshteinSimilarity } from '../lib/levenshtein';
-import { OPENROUTER_MODEL } from '../config/api-keys';
 import { OPENROUTER_URL, openRouterHeaders } from '../lib/openrouter-client';
+
+interface MatchOptions {
+  apiKey: string;
+  model: string;
+}
 
 const SIMILARITY_THRESHOLD = 0.40;
 const AI_MATCH_TIMEOUT_MS = 30_000;
@@ -40,9 +44,9 @@ Vrať POUZE JSON objekt v tomto formátu:
 Pokud žádné páry nenajdeš, vrať: {"pairs": []}`;
 
 /**
- * Match items using Gemini AI via OpenRouter.
+ * Match items using AI via OpenRouter.
  */
-async function aiMatch(invoiceItems: LineItem[], receiptItems: LineItem[]): Promise<MatchingPair[]> {
+async function aiMatch(invoiceItems: LineItem[], receiptItems: LineItem[], options: MatchOptions): Promise<MatchingPair[]> {
   const invoiceData = invoiceItems.map((item, i) => itemForPrompt(item, i));
   const receiptData = receiptItems.map((item, i) => itemForPrompt(item, i));
 
@@ -54,9 +58,9 @@ async function aiMatch(invoiceItems: LineItem[], receiptItems: LineItem[]): Prom
   try {
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
-      headers: openRouterHeaders(),
+      headers: openRouterHeaders(options.apiKey),
       body: JSON.stringify({
-        model: OPENROUTER_MODEL,
+        model: options.model,
         messages: [
           { role: 'system', content: MATCHING_PROMPT },
           { role: 'user', content: userMessage },
@@ -162,16 +166,17 @@ function levenshteinMatch(invoiceItems: LineItem[], receiptItems: LineItem[]): M
 
 /**
  * Auto-match invoice and receipt items.
- * Uses AI (Gemini) for semantic matching, falls back to Levenshtein on failure.
+ * Uses AI for semantic matching, falls back to Levenshtein on failure.
  */
 export async function autoMatch(
   invoiceItems: LineItem[],
-  receiptItems: LineItem[]
+  receiptItems: LineItem[],
+  options: MatchOptions,
 ): Promise<MatchingPair[]> {
   if (invoiceItems.length === 0 || receiptItems.length === 0) return [];
 
   try {
-    return await aiMatch(invoiceItems, receiptItems);
+    return await aiMatch(invoiceItems, receiptItems, options);
   } catch (error) {
     console.warn('AI matching failed, falling back to Levenshtein:', error);
     return levenshteinMatch(invoiceItems, receiptItems);

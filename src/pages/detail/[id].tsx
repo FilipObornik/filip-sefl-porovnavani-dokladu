@@ -81,11 +81,6 @@ export default function DetailPage() {
                 <h1 className="text-lg font-bold text-gray-800">
                   {row.note || 'Detail porovnání'}
                 </h1>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  <span className="text-sky-600 font-medium">{invoiceDoc.name}</span>
-                  <span className="mx-1.5 text-gray-300">|</span>
-                  <span className="text-emerald-600 font-medium">{receiptDoc.name}</span>
-                </p>
               </div>
             </div>
           </div>

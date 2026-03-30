@@ -38,7 +38,10 @@ export default function ItemPanel({ title, items, side, documentId, document: do
       <div className={`${bgColor} border-b-2 ${borderColor} px-3 py-2 rounded-t`}>
         {/* Title row */}
         <div className="flex items-center justify-between mb-2">
-          <h3 className={`text-sm font-semibold ${textColor}`}>{title}</h3>
+          <div>
+            <h3 className={`text-sm font-semibold ${textColor}`}>{title}</h3>
+            <p className="text-xs text-gray-500 truncate max-w-[160px]" title={doc.name}>{doc.name}</p>
+          </div>
           <button
             onClick={() => setVerifyOpen(true)}
             className={`p-1 rounded hover:bg-white/50 transition-colors ${textColor}`}

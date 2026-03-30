@@ -7,6 +7,7 @@ import FileDropZone from './FileDropZone';
 import { processDocument } from '@/services/document-processor';
 import { autoMatch } from '@/services/matching-service';
 import { formatCzechNumber } from '@/lib/number-utils';
+import { useSettings } from '@/state/settings-context';
 
 interface OverviewRowProps {
   row: ComparisonRow;
@@ -14,6 +15,7 @@ interface OverviewRowProps {
 
 export default function OverviewRow({ row }: OverviewRowProps) {
   const { state, dispatch } = useAppContext();
+  const { settings } = useSettings();
   const router = useRouter();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmReprocess, setConfirmReprocess] = useState(false);
@@ -170,14 +172,14 @@ export default function OverviewRow({ row }: OverviewRowProps) {
 
     try {
       const [invoiceResult, receiptResult] = await Promise.all([
-        processDocument(invoice),
-        processDocument(receipt),
+        processDocument(invoice, { apiKey: settings.apiKey, model: settings.selectedModel, rowId: row.id, requestType: 'invoice' }),
+        processDocument(receipt, { apiKey: settings.apiKey, model: settings.selectedModel, rowId: row.id, requestType: 'receipt' }),
       ]);
 
       dispatch({ type: 'UPDATE_DOCUMENT', documentId: invoice.id, updates: { items: invoiceResult.items, status: 'done', documentTotals: invoiceResult.documentTotals ?? undefined, documentClosed: invoiceResult.documentClosed } });
       dispatch({ type: 'UPDATE_DOCUMENT', documentId: receipt.id, updates: { items: receiptResult.items, status: 'done', documentTotals: receiptResult.documentTotals ?? undefined, documentClosed: receiptResult.documentClosed } });
 
-      const pairs = await autoMatch(invoiceResult.items, receiptResult.items);
+      const pairs = await autoMatch(invoiceResult.items, receiptResult.items, { apiKey: settings.apiKey, model: settings.selectedModel });
       dispatch({ type: 'SET_MATCHING_PAIRS', rowId: row.id, pairs });
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Neznámá chyba';
@@ -345,7 +347,7 @@ export default function OverviewRow({ row }: OverviewRowProps) {
 
       {/* MJ: počet položek příjemky / faktury */}
       <td className="px-3 py-2 text-center text-sm whitespace-nowrap">
-        {receiptItemCount !== null && invoiceItemCount !== null ? (
+        {receiptItemCount !== null && invoiceItemCount !== null && (receiptItemCount > 0 || invoiceItemCount > 0) ? (
           <span className={receiptItemCount === invoiceItemCount ? 'text-green-700 font-medium' : 'text-red-700 font-medium'}>
             {receiptItemCount}/{invoiceItemCount}
           </span>

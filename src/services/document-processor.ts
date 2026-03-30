@@ -1,5 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import { Document, DocumentTotals, LineItem } from '../state/types';
+import { parseCzechNumber } from '../lib/number-utils';
+import { OPENROUTER_URL, openRouterHeaders } from '../lib/openrouter-client';
+import { UsageEntry } from '../config/settings-types';
 
 export class DocumentProcessorError extends Error {
   constructor(message: string) {
@@ -7,14 +10,18 @@ export class DocumentProcessorError extends Error {
     this.name = 'DocumentProcessorError';
   }
 }
-import { OPENROUTER_MODEL } from '../config/api-keys';
-import { parseCzechNumber } from '../lib/number-utils';
-import { OPENROUTER_URL, openRouterHeaders } from '../lib/openrouter-client';
 
 export interface ProcessDocumentResult {
   items: LineItem[];
   documentTotals: DocumentTotals | null;
   documentClosed: boolean | null;
+}
+
+export interface ProcessDocumentOptions {
+  apiKey: string;
+  model: string;
+  rowId: string;
+  requestType: 'invoice' | 'receipt';
 }
 
 const TIMEOUT_MS = 60_000;
@@ -44,19 +51,32 @@ Pravidla:
 - Zachovej českou diakritiku v názvech
 - Vrať POUZE JSON objekt, žádný další text`;
 
+function getElectronAPI() {
+  if (typeof window !== 'undefined' && (window as unknown as Record<string, unknown>).electronAPI) {
+    return (window as unknown as { electronAPI: {
+      logUsage: (entry: UsageEntry) => Promise<void>;
+    } }).electronAPI;
+  }
+  return null;
+}
+
 /**
- * Extract line items and document-level totals from a document image using Gemini via OpenRouter.
+ * Extract line items and document-level totals from a document image using the configured model via OpenRouter.
  */
-export async function processDocument(doc: Document): Promise<ProcessDocumentResult> {
+export async function processDocument(
+  doc: Document,
+  options: ProcessDocumentOptions,
+): Promise<ProcessDocumentResult> {
+  const { apiKey, model, rowId, requestType } = options;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
-      headers: openRouterHeaders(),
+      headers: openRouterHeaders(apiKey),
       body: JSON.stringify({
-        model: OPENROUTER_MODEL,
+        model,
         messages: [
           {
             role: 'user',
@@ -83,7 +103,7 @@ export async function processDocument(doc: Document): Promise<ProcessDocumentRes
 
     if (!response.ok) {
       if (response.status === 401) {
-        throw new DocumentProcessorError('Chyba autorizace: Neplatný API klíč pro OpenRouter. Zkontrolujte konfiguraci.');
+        throw new DocumentProcessorError('Chyba autorizace: Neplatný API klíč pro OpenRouter. Zkontrolujte nastavení.');
       }
       if (response.status === 429) {
         throw new DocumentProcessorError('Příliš mnoho požadavků: Překročen limit OpenRouter API. Zkuste to znovu za chvíli.');
@@ -101,6 +121,33 @@ export async function processDocument(doc: Document): Promise<ProcessDocumentRes
       throw new DocumentProcessorError('AI vrátila prázdnou odpověď. Zkuste dokument nahrát znovu.');
     }
 
+    // Log usage — OpenRouter returns actual cost in data.cost (USD)
+    const usage = data?.usage;
+    if (usage) {
+      const promptTokens: number = usage.prompt_tokens ?? usage.input_tokens ?? 0;
+      const completionTokens: number = usage.completion_tokens ?? usage.output_tokens ?? 0;
+      const totalTokens: number = usage.total_tokens ?? promptTokens + completionTokens;
+      const costUSD: number = typeof data.cost === 'number' ? data.cost : 0;
+
+      const entry: UsageEntry = {
+        id: uuidv4(),
+        timestamp: new Date().toISOString(),
+        rowId,
+        documentId: doc.id,
+        documentLabel: doc.name ?? 'Neznámý dokument',
+        requestType,
+        model,
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        costUSD,
+      };
+
+      getElectronAPI()?.logUsage(entry).catch(() => {
+        // Non-fatal — logging failure should not break processing
+      });
+    }
+
     const { rawItems, rawTotals } = parseFullResponse(content);
     const items = rawItems.map((item: Record<string, unknown>) => deriveLineItemFields(normalizeLineItem(item)));
     const documentTotals = normalizeDocumentTotals(rawTotals);
@@ -115,7 +162,6 @@ export async function processDocument(doc: Document): Promise<ProcessDocumentRes
       throw new DocumentProcessorError('Časový limit vypršel: AI neodpověděla do 60 sekund. Zkuste to znovu.');
     }
 
-    // Re-throw our own errors as-is
     if (error instanceof DocumentProcessorError) {
       throw error;
     }
@@ -129,22 +175,16 @@ interface ParsedResponse {
   rawTotals: Record<string, unknown> | null;
 }
 
-/**
- * Parse the AI response into items array and document_totals object.
- * Handles direct JSON objects, markdown code blocks, and legacy bare arrays.
- */
 function parseFullResponse(content: string): ParsedResponse {
   const tryExtract = (parsed: unknown): ParsedResponse | null => {
     if (!parsed || typeof parsed !== 'object') return null;
 
-    // Expected shape: { items: [...], document_totals: {...} }
     if (Array.isArray(parsed)) {
       return { rawItems: parsed as Record<string, unknown>[], rawTotals: null };
     }
 
     const obj = parsed as Record<string, unknown>;
 
-    // Find items array — try "items" key first, then any array value
     let rawItems: Record<string, unknown>[] | null = null;
     if (Array.isArray(obj.items)) {
       rawItems = obj.items as Record<string, unknown>[];
@@ -166,7 +206,6 @@ function parseFullResponse(content: string): ParsedResponse {
     return { rawItems, rawTotals };
   };
 
-  // 1. Try direct JSON.parse
   try {
     const result = tryExtract(JSON.parse(content));
     if (result) return result;
@@ -174,7 +213,6 @@ function parseFullResponse(content: string): ParsedResponse {
     // continue
   }
 
-  // 2. Try markdown code blocks
   const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (codeBlockMatch) {
     try {
@@ -185,7 +223,6 @@ function parseFullResponse(content: string): ParsedResponse {
     }
   }
 
-  // 3. Legacy: try finding a raw JSON array
   const arrayMatch = content.match(/\[[\s\S]*\]/);
   if (arrayMatch) {
     try {
@@ -199,23 +236,15 @@ function parseFullResponse(content: string): ParsedResponse {
   throw new DocumentProcessorError('Nepodařilo se zpracovat odpověď AI. Vrácená data nejsou ve správném formátu.');
 }
 
-/**
- * Normalize raw document_totals object from AI into DocumentTotals.
- */
 function normalizeDocumentTotals(raw: Record<string, unknown> | null): DocumentTotals | null {
   if (!raw) return null;
   const total_price = toNumber(raw.total_price);
   const total_vat = toNumber(raw.total_vat);
   const total_price_with_vat = toNumber(raw.total_price_with_vat);
-  // Return null if all fields are null (AI found nothing)
   if (total_price === null && total_vat === null && total_price_with_vat === null) return null;
   return { total_price, total_vat, total_price_with_vat };
 }
 
-/**
- * Normalize a raw AI-extracted item into a proper LineItem with uuid.
- * Uses parseCzechNumber as fallback for any string numeric values.
- */
 function normalizeLineItem(raw: Record<string, unknown>): LineItem {
   return {
     id: uuidv4(),
@@ -230,33 +259,25 @@ function normalizeLineItem(raw: Record<string, unknown>): LineItem {
   };
 }
 
-/**
- * Fill in missing LineItem fields that can be derived from other present values.
- * Tracks which fields were calculated in derived_fields[].
- */
 function deriveLineItemFields(item: LineItem): LineItem {
   const derived: string[] = [];
   let { total_price, unit_price, total_price_with_vat, vat_rate, quantity } = item;
 
-  // total_price from quantity × unit_price
   if (total_price === null && quantity !== null && unit_price !== null) {
     total_price = round2(quantity * unit_price);
     derived.push('total_price');
   }
 
-  // unit_price from total_price ÷ quantity
   if (unit_price === null && total_price !== null && quantity !== null && quantity !== 0) {
     unit_price = round2(total_price / quantity);
     derived.push('unit_price');
   }
 
-  // total_price_with_vat from total_price × (1 + vat_rate/100)
   if (total_price_with_vat === null && total_price !== null && vat_rate !== null) {
     total_price_with_vat = round2(total_price * (1 + vat_rate / 100));
     derived.push('total_price_with_vat');
   }
 
-  // vat_rate from total_price and total_price_with_vat
   if (vat_rate === null && total_price !== null && total_price !== 0 && total_price_with_vat !== null) {
     vat_rate = round2((total_price_with_vat / total_price - 1) * 100);
     derived.push('vat_rate');
