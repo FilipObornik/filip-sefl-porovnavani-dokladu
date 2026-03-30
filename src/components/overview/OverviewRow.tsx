@@ -1,12 +1,14 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { useRouter } from 'next/router';
 import { useAppContext } from '@/state/app-context';
-import { ComparisonRow, VERIFY_TOLERANCE } from '@/state/types';
+import { ComparisonRow } from '@/state/types';
 import FileDropZone from './FileDropZone';
 import { processDocument } from '@/services/document-processor';
+import { compareDocuments } from '@/services/comparison-service';
 import { autoMatch } from '@/services/matching-service';
 import { formatCzechNumber } from '@/lib/number-utils';
+import { computeRowStatus } from '@/lib/row-status';
 import { useSettings } from '@/state/settings-context';
 
 interface OverviewRowProps {
@@ -38,119 +40,29 @@ export default function OverviewRow({ row }: OverviewRowProps) {
     ? state.receipts.find((d) => d.id === row.receiptId) ?? null
     : null;
 
-  // Compute totals from ALL document items (not just paired), excluding archived
-  const totalPriceInvoice =
-    row.status === 'done' && invoice
-      ? invoice.items.filter((i) => !i.archived).reduce((sum, item) => sum + (item.total_price ?? 0), 0)
-      : null;
+  const comparison = useMemo(() => {
+    if (row.status !== 'done' || !invoice || !receipt) return null;
+    return compareDocuments(
+      invoice.items.filter((i) => !i.archived),
+      receipt.items.filter((i) => !i.archived),
+    );
+  }, [row.status, invoice, receipt]);
 
-  const totalPriceReceipt =
-    row.status === 'done' && receipt
-      ? receipt.items.filter((i) => !i.archived).reduce((sum, item) => sum + (item.total_price ?? 0), 0)
-      : null;
+  const { warnings, isHardError } = useMemo(() => {
+    if (!comparison || !invoice || !receipt) return { warnings: [], isHardError: false };
+    return computeRowStatus(invoice, receipt, row.matchingPairs, comparison);
+  }, [comparison, invoice, receipt, row.matchingPairs]);
 
-  const totalVatInvoice =
-    row.status === 'done' && invoice
-      ? invoice.items.filter((i) => !i.archived).reduce((sum, item) => {
-          const vat =
-            item.total_price_with_vat !== null && item.total_price !== null
-              ? item.total_price_with_vat - item.total_price
-              : 0;
-          return sum + vat;
-        }, 0)
-      : null;
-
-  const totalVatReceipt =
-    row.status === 'done' && receipt
-      ? receipt.items.filter((i) => !i.archived).reduce((sum, item) => {
-          const vat =
-            item.total_price_with_vat !== null && item.total_price !== null
-              ? item.total_price_with_vat - item.total_price
-              : 0;
-          return sum + vat;
-        }, 0)
-      : null;
-
-  const documentClosed =
-    row.status === 'done' && receipt
-      ? receipt.documentClosed
-      : null;
-
-  const priceOk =
-    totalPriceInvoice !== null && totalPriceReceipt !== null
-      ? Math.abs(totalPriceInvoice - totalPriceReceipt) <= 5
-      : null;
-
-  const vatOk =
-    totalVatInvoice !== null && totalVatReceipt !== null
-      ? Math.abs(totalVatInvoice - totalVatReceipt) <= 5
-      : null;
-
-  // Item counts (non-archived)
+  // Values needed for table cell display
+  const totalPriceInvoice = comparison ? comparison.totalPriceInvoice : null;
+  const totalPriceReceipt = comparison ? comparison.totalPriceReceipt : null;
+  const priceOk = comparison ? comparison.priceValid : null;
+  const vatOk = comparison ? comparison.vatValid : null;
   const invoiceItemCount = invoice ? invoice.items.filter((i) => !i.archived).length : null;
   const receiptItemCount = receipt ? receipt.items.filter((i) => !i.archived).length : null;
+  const documentClosed = row.status === 'done' && receipt ? receipt.documentClosed : null;
 
-  // Document-level verify: does sum of items match header totals?
-  const invoiceVerifyOk =
-    row.status === 'done' && invoice && totalPriceInvoice !== null &&
-    invoice.documentTotals?.total_price !== null && invoice.documentTotals?.total_price !== undefined
-      ? Math.abs(totalPriceInvoice - invoice.documentTotals.total_price) <= VERIFY_TOLERANCE
-      : null;
-
-  const receiptVerifyOk =
-    row.status === 'done' && receipt && totalPriceReceipt !== null &&
-    receipt.documentTotals?.total_price !== null && receipt.documentTotals?.total_price !== undefined
-      ? Math.abs(totalPriceReceipt - receipt.documentTotals.total_price) <= VERIFY_TOLERANCE
-      : null;
-
-  const verifyFail = invoiceVerifyOk === false || receiptVerifyOk === false;
-  const verifyOk = !verifyFail && (invoiceVerifyOk === true || receiptVerifyOk === true);
-
-  // Compute status warnings
-  const warnings: string[] = [];
-  if (row.status === 'done' && invoice && receipt) {
-    // Archived items
-    const archivedInvoice = invoice.items.filter((i) => i.archived).length;
-    const archivedReceipt = receipt.items.filter((i) => i.archived).length;
-    if (archivedInvoice > 0) warnings.push(`Archivované položky na faktuře: ${archivedInvoice}`);
-    if (archivedReceipt > 0) warnings.push(`Archivované položky na příjemce: ${archivedReceipt}`);
-
-    // Manually edited items
-    const editedInvoice = invoice.items.filter((i) => (i.edited_fields ?? []).length > 0).length;
-    const editedReceipt = receipt.items.filter((i) => (i.edited_fields ?? []).length > 0).length;
-    const totalEdited = editedInvoice + editedReceipt;
-    if (totalEdited > 0) warnings.push(`Ručně upravené položky: ${totalEdited}`);
-
-    // Unmatched items
-    const pairedInvoiceIds = new Set(row.matchingPairs.flatMap((p) => p.invoiceItemIds));
-    const pairedReceiptIds = new Set(row.matchingPairs.flatMap((p) => p.receiptItemIds));
-    const unpaidInvoice = invoice.items.filter((i) => !i.archived && !pairedInvoiceIds.has(i.id)).length;
-    const unpaidReceipt = receipt.items.filter((i) => !i.archived && !pairedReceiptIds.has(i.id)).length;
-    if (unpaidInvoice > 0) warnings.push(`Nespárované položky na faktuře: ${unpaidInvoice}`);
-    if (unpaidReceipt > 0) warnings.push(`Nespárované položky na příjemce: ${unpaidReceipt}`);
-
-    // Qty / price mismatches per pair
-    let qtyMismatch = 0;
-    let priceMismatch = 0;
-    for (const pair of row.matchingPairs) {
-      const invItems = invoice.items.filter((i) => !i.archived && pair.invoiceItemIds.includes(i.id));
-      const recItems = receipt.items.filter((i) => !i.archived && pair.receiptItemIds.includes(i.id));
-      if (invItems.length > 0 && recItems.length > 0) {
-        const invQty = invItems.reduce((s, i) => s + (i.quantity ?? 0), 0);
-        const recQty = recItems.reduce((s, i) => s + (i.quantity ?? 0), 0);
-        if (invQty !== recQty) qtyMismatch++;
-        const invPrice = invItems.reduce((s, i) => s + (i.total_price ?? 0), 0);
-        const recPrice = recItems.reduce((s, i) => s + (i.total_price ?? 0), 0);
-        if (Math.abs(invPrice - recPrice) > 5) priceMismatch++;
-      }
-    }
-    if (qtyMismatch > 0) warnings.push(`Nesedící množství: ${qtyMismatch} ${qtyMismatch === 1 ? 'pár' : qtyMismatch < 5 ? 'páry' : 'párů'}`);
-    if (priceMismatch > 0) warnings.push(`Nesedící cena v párech: ${priceMismatch} ${priceMismatch === 1 ? 'pár' : priceMismatch < 5 ? 'páry' : 'párů'}`);
-    if (priceOk === false) warnings.push('Celková cena faktury a příjemky nesedí');
-    if (vatOk === false) warnings.push('Celkové DPH faktury a příjemky nesedí');
-  }
-
-  const canProcess = row.status === 'ready' || row.status === 'done';
+  const canProcess = row.status === 'ready' || row.status === 'done' || row.status === 'error';
   const isProcessing = row.status === 'processing';
   const isDone = row.status === 'done';
 
@@ -268,13 +180,6 @@ export default function OverviewRow({ row }: OverviewRowProps) {
         </div>
       </div>
     )}
-    {row.status === 'error' && errorMessage && (
-      <tr className="bg-red-50 border-b border-red-200">
-        <td colSpan={13} className="px-3 py-1.5 text-sm text-red-700">
-          <span className="font-medium">Chyba při zpracování:</span> {errorMessage}
-        </td>
-      </tr>
-    )}
     <tr className="border-b border-gray-200 hover:bg-gray-50">
       {/* Poznamka */}
       <td className="px-2 py-1 align-top">
@@ -345,25 +250,12 @@ export default function OverviewRow({ row }: OverviewRowProps) {
         )}
       </td>
 
-      {/* MJ: počet položek příjemky / faktury */}
+      {/* MJ: počet položek faktury / příjemky */}
       <td className="px-3 py-2 text-center text-sm whitespace-nowrap">
         {receiptItemCount !== null && invoiceItemCount !== null && (receiptItemCount > 0 || invoiceItemCount > 0) ? (
           <span className={receiptItemCount === invoiceItemCount ? 'text-green-700 font-medium' : 'text-red-700 font-medium'}>
-            {receiptItemCount}/{invoiceItemCount}
+            {invoiceItemCount}/{receiptItemCount}
           </span>
-        ) : (
-          <span className="text-gray-400">–</span>
-        )}
-      </td>
-
-      {/* Verify: součet položek vs hlavička dokumentu */}
-      <td className="px-3 py-2 text-center text-sm">
-        {invoiceVerifyOk === null && receiptVerifyOk === null ? (
-          <span className="text-gray-400">–</span>
-        ) : verifyFail ? (
-          <span className="text-red-700 font-bold">✗</span>
-        ) : verifyOk ? (
-          <span className="text-green-700 font-bold">✓</span>
         ) : (
           <span className="text-gray-400">–</span>
         )}
@@ -392,12 +284,12 @@ export default function OverviewRow({ row }: OverviewRowProps) {
                 onMouseEnter={showTooltip}
                 onMouseLeave={hideTooltip}
                 onClick={() => tooltipPos ? hideTooltip() : showTooltip()}
-                className={(priceOk === false || vatOk === false)
+                className={isHardError
                   ? 'text-red-600 text-base font-bold hover:opacity-70'
                   : 'text-amber-500 text-base font-bold hover:opacity-70'
                 }
               >
-                {(priceOk === false || vatOk === false) ? '✗' : '⚠'}
+                {isHardError ? '✗' : '⚠'}
               </button>
               {tooltipPos && typeof document !== 'undefined' && ReactDOM.createPortal(
                 <div
@@ -455,6 +347,13 @@ export default function OverviewRow({ row }: OverviewRowProps) {
         </button>
       </td>
     </tr>
+    {row.status === 'error' && errorMessage && (
+      <tr className="bg-red-50 border-b border-red-200">
+        <td colSpan={12} className="px-3 py-1.5 text-sm text-red-700">
+          <span className="font-medium">Chyba při zpracování:</span> {errorMessage}
+        </td>
+      </tr>
+    )}
     </>
   );
 }

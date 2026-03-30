@@ -28,6 +28,7 @@ export default function ItemPanel({ title, items, archivedItems, side, documentI
     id: side === 'invoice' ? DND_UNMATCHED_INVOICE : DND_UNMATCHED_RECEIPT,
   });
   const borderColor = side === 'invoice' ? 'border-blue-400' : 'border-green-400';
+  const itemBorderColor = side === 'invoice' ? 'border-l-blue-500' : 'border-l-green-500';
   const bgColor = side === 'invoice' ? 'bg-blue-50' : 'bg-green-50';
   const textColor = side === 'invoice' ? 'text-blue-700' : 'text-green-700';
 
@@ -122,19 +123,22 @@ export default function ItemPanel({ title, items, archivedItems, side, documentI
             Žádné nespárované položky
           </div>
         ) : (
-          <>
-            {items.map((item) => (
-              <DraggableItem key={item.id} item={item} side={side} />
-            ))}
+          <div className="flex flex-col min-h-full">
+            <div>
+              {items.map((item) => (
+                <DraggableItem key={item.id} item={item} side={side} />
+              ))}
+            </div>
+            <div className="flex-1" />
             {archivedItems && archivedItems.length > 0 && (
-              <>
+              <div>
                 <div className="mt-2 mb-1 pt-2 border-t border-gray-200 text-xs font-semibold text-gray-400 uppercase tracking-wide px-1">
                   Archivované
                 </div>
                 {archivedItems.map((item) => (
                   <div
                     key={item.id}
-                    className={`bg-white border border-gray-200 border-l-4 ${borderColor} rounded p-3 mb-2 opacity-50`}
+                    className={`bg-white border border-gray-200 border-l-4 ${itemBorderColor} rounded p-3 mb-2 opacity-50`}
                   >
                     <div className="text-sm font-medium text-gray-600 break-words">
                       {item.item_name}
@@ -145,9 +149,9 @@ export default function ItemPanel({ title, items, archivedItems, side, documentI
                     </div>
                   </div>
                 ))}
-              </>
+              </div>
             )}
-          </>
+          </div>
         )}
       </div>
       <div className="p-2 border-t border-gray-200">

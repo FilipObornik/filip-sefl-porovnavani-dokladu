@@ -37,10 +37,7 @@ export default function OverviewTable() {
               DPH
             </th>
             <th className="px-3 py-2 text-center font-semibold whitespace-nowrap">
-              MJ (příj./fak.)
-            </th>
-            <th className="px-3 py-2 text-center font-semibold whitespace-nowrap">
-              Součty
+              MJ (fak./příj.)
             </th>
             <th className="px-3 py-2 text-center font-semibold whitespace-nowrap">
               Uzavřen?

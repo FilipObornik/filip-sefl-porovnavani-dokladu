@@ -127,7 +127,7 @@ export async function processDocument(
       const promptTokens: number = usage.prompt_tokens ?? usage.input_tokens ?? 0;
       const completionTokens: number = usage.completion_tokens ?? usage.output_tokens ?? 0;
       const totalTokens: number = usage.total_tokens ?? promptTokens + completionTokens;
-      const costUSD: number = typeof data.cost === 'number' ? data.cost : 0;
+      const costUSD: number = typeof usage.cost === 'number' ? usage.cost : (typeof data.cost === 'number' ? data.cost : 0);
 
       const entry: UsageEntry = {
         id: uuidv4(),

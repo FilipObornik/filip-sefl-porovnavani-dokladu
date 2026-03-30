@@ -1,7 +1,9 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import ReactDOM from 'react-dom';
 import { useRouter } from 'next/router';
 import { useAppContext } from '@/state/app-context';
 import { compareDocuments, docTotalsMatch } from '@/services/comparison-service';
+import { computeRowStatus } from '@/lib/row-status';
 import DetailLayout from '@/components/detail/DetailLayout';
 import SummaryBadge from '@/components/detail/SummaryBadge';
 
@@ -9,6 +11,8 @@ export default function DetailPage() {
   const router = useRouter();
   const { id } = router.query;
   const { state } = useAppContext();
+  const statusBtnRef = useRef<HTMLButtonElement>(null);
+  const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number } | null>(null);
 
   const row = state.comparisonRows.find((r) => r.id === id);
 
@@ -30,15 +34,42 @@ export default function DetailPage() {
     );
   }, [invoiceDoc, receiptDoc]);
 
+  // CalcTotals for display ("Spočítáno") includes ALL items (incl. archived) — for extraction quality check
+  const invoiceCalcTotalsAll = useMemo(() => {
+    if (!invoiceDoc) return null;
+    const all = invoiceDoc.items;
+    return {
+      price: all.reduce((s, i) => s + (i.total_price ?? 0), 0),
+      vat: all.reduce((s, i) => s + ((i.total_price_with_vat ?? 0) - (i.total_price ?? 0)), 0),
+      priceWithVat: all.reduce((s, i) => s + (i.total_price_with_vat ?? 0), 0),
+    };
+  }, [invoiceDoc]);
+
+  const receiptCalcTotalsAll = useMemo(() => {
+    if (!receiptDoc) return null;
+    const all = receiptDoc.items;
+    return {
+      price: all.reduce((s, i) => s + (i.total_price ?? 0), 0),
+      vat: all.reduce((s, i) => s + ((i.total_price_with_vat ?? 0) - (i.total_price ?? 0)), 0),
+      priceWithVat: all.reduce((s, i) => s + (i.total_price_with_vat ?? 0), 0),
+    };
+  }, [receiptDoc]);
+
+  // Verify (✓/✗ banner) uses same totals as the display (all items incl. archived)
   const invoiceVerify = useMemo(() => {
-    if (!invoiceDoc || !comparison) return null;
-    return docTotalsMatch(invoiceDoc, comparison.totalPriceInvoice, comparison.totalVatInvoice, comparison.totalPriceWithVatInvoice);
-  }, [invoiceDoc, comparison]);
+    if (!invoiceDoc || !invoiceCalcTotalsAll) return null;
+    return docTotalsMatch(invoiceDoc, invoiceCalcTotalsAll.price, invoiceCalcTotalsAll.vat, invoiceCalcTotalsAll.priceWithVat);
+  }, [invoiceDoc, invoiceCalcTotalsAll]);
 
   const receiptVerify = useMemo(() => {
-    if (!receiptDoc || !comparison) return null;
-    return docTotalsMatch(receiptDoc, comparison.totalPriceReceipt, comparison.totalVatReceipt, comparison.totalPriceWithVatReceipt);
-  }, [receiptDoc, comparison]);
+    if (!receiptDoc || !receiptCalcTotalsAll) return null;
+    return docTotalsMatch(receiptDoc, receiptCalcTotalsAll.price, receiptCalcTotalsAll.vat, receiptCalcTotalsAll.priceWithVat);
+  }, [receiptDoc, receiptCalcTotalsAll]);
+
+  const { warnings, isHardError } = useMemo(() => {
+    if (!invoiceDoc || !receiptDoc || !comparison || !row) return { warnings: [], isHardError: false };
+    return computeRowStatus(invoiceDoc, receiptDoc, row.matchingPairs, comparison);
+  }, [invoiceDoc, receiptDoc, comparison, row]);
 
   // Redirect if row not found or not done
   useEffect(() => {
@@ -63,6 +94,13 @@ export default function DetailPage() {
   if (!row || row.status !== 'done' || !invoiceDoc || !receiptDoc) {
     return null;
   }
+
+  const showTooltip = () => {
+    if (!statusBtnRef.current) return;
+    const rect = statusBtnRef.current.getBoundingClientRect();
+    setTooltipPos({ top: rect.bottom + 6, left: rect.left + rect.width / 2 });
+  };
+  const hideTooltip = () => setTooltipPos(null);
 
   return (
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
@@ -115,16 +153,40 @@ export default function DetailPage() {
                 valid={comparison.priceWithVatValid}
                 suffix="Kč"
               />
-              <div
-                className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                  comparison.checksumValid
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-red-100 text-red-800'
-                }`}
-              >
-                {comparison.checksumValid ? 'Vše OK' : 'Neshoda'}
-              </div>
 
+              {/* Stav — same logic as overview Stav column */}
+              {warnings.length === 0 ? (
+                <span className="text-green-600 text-base font-bold">✓</span>
+              ) : (
+                <>
+                  <button
+                    ref={statusBtnRef}
+                    onMouseEnter={showTooltip}
+                    onMouseLeave={hideTooltip}
+                    onClick={() => tooltipPos ? hideTooltip() : showTooltip()}
+                    className={`text-base font-bold hover:opacity-70 ${isHardError ? 'text-red-600' : 'text-amber-500'}`}
+                  >
+                    {isHardError ? '✗' : '⚠'}
+                  </button>
+                  {tooltipPos && typeof document !== 'undefined' && ReactDOM.createPortal(
+                    <div
+                      className="fixed z-[9999] w-72 bg-white border border-gray-200 rounded-lg shadow-xl p-3 text-left pointer-events-none"
+                      style={{ top: tooltipPos.top, left: tooltipPos.left, transform: 'translateX(-50%)' }}
+                    >
+                      <p className="text-xs font-semibold text-gray-600 mb-2">Upozornění:</p>
+                      <ul className="space-y-1">
+                        {warnings.map((w, i) => (
+                          <li key={i} className="flex items-start gap-1.5 text-xs text-gray-700">
+                            <span className="mt-0.5 shrink-0 text-amber-500">•</span>
+                            {w}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>,
+                    document.body
+                  )}
+                </>
+              )}
             </div>
           )}
         </div>
@@ -136,8 +198,8 @@ export default function DetailPage() {
           row={row}
           invoiceDoc={invoiceDoc}
           receiptDoc={receiptDoc}
-          invoiceCalcTotals={comparison ? { price: comparison.totalPriceInvoice, vat: comparison.totalVatInvoice, priceWithVat: comparison.totalPriceWithVatInvoice } : null}
-          receiptCalcTotals={comparison ? { price: comparison.totalPriceReceipt, vat: comparison.totalVatReceipt, priceWithVat: comparison.totalPriceWithVatReceipt } : null}
+          invoiceCalcTotals={invoiceCalcTotalsAll}
+          receiptCalcTotals={receiptCalcTotalsAll}
           invoiceVerify={invoiceVerify}
           receiptVerify={receiptVerify}
         />
