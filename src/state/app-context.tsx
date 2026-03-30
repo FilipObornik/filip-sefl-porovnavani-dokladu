@@ -146,10 +146,27 @@ function appReducer(state: AppState, action: AppAction): AppState {
               }
             : d
         );
+
+      // When archiving an item, remove it from any matching pairs
+      const isArchiving = action.updates.archived === true;
+      const updatedRows = isArchiving
+        ? state.comparisonRows.map((row) => {
+            const newPairs = row.matchingPairs
+              .map((pair) => ({
+                ...pair,
+                invoiceItemIds: pair.invoiceItemIds.filter((id) => id !== action.itemId),
+                receiptItemIds: pair.receiptItemIds.filter((id) => id !== action.itemId),
+              }))
+              .filter((pair) => pair.invoiceItemIds.length > 0 || pair.receiptItemIds.length > 0);
+            return { ...row, matchingPairs: newPairs };
+          })
+        : state.comparisonRows;
+
       return {
         ...state,
         invoices: updateItems(state.invoices),
         receipts: updateItems(state.receipts),
+        comparisonRows: updatedRows,
       };
     }
 

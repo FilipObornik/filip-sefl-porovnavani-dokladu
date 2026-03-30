@@ -68,6 +68,12 @@ export default function DetailLayout({
   const unmatchedReceiptItems = receiptDoc.items.filter(
     (item) => !item.archived && !pairedReceiptItemIds.has(item.id)
   );
+  const archivedUnmatchedInvoiceItems = invoiceDoc.items.filter(
+    (item) => item.archived && !pairedInvoiceItemIds.has(item.id)
+  );
+  const archivedUnmatchedReceiptItems = receiptDoc.items.filter(
+    (item) => item.archived && !pairedReceiptItemIds.has(item.id)
+  );
 
   function handleDragStart(event: DragStartEvent) {
     const data = event.active.data.current as {
@@ -208,6 +214,7 @@ export default function DetailLayout({
           <ItemPanel
             title="Faktura"
             items={unmatchedInvoiceItems}
+            archivedItems={archivedUnmatchedInvoiceItems}
             side="invoice"
             documentId={invoiceDoc.id}
             document={invoiceDoc}
@@ -226,6 +233,7 @@ export default function DetailLayout({
           <ItemPanel
             title="Příjemka"
             items={unmatchedReceiptItems}
+            archivedItems={archivedUnmatchedReceiptItems}
             side="receipt"
             documentId={receiptDoc.id}
             document={receiptDoc}

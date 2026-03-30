@@ -36,8 +36,19 @@ export default function MatchingArea({ row, invoiceDoc, receiptDoc }: MatchingAr
   const invoiceItemMap = new Map(invoiceDoc.items.map((i) => [i.id, i]));
   const receiptItemMap = new Map(receiptDoc.items.map((i) => [i.id, i]));
 
+  const isFullyArchivedPair = (pair: typeof row.matchingPairs[0]) => {
+    const allInv = pair.invoiceItemIds.map((id) => invoiceItemMap.get(id)).filter(Boolean);
+    const allRec = pair.receiptItemIds.map((id) => receiptItemMap.get(id)).filter(Boolean);
+    const activeInv = allInv.filter((i) => !i!.archived);
+    const activeRec = allRec.filter((i) => !i!.archived);
+    return activeInv.length === 0 && activeRec.length === 0 && (allInv.length > 0 || allRec.length > 0);
+  };
+
+  const activePairs = row.matchingPairs.filter((pair) => !isFullyArchivedPair(pair));
+  const archivedPairs = row.matchingPairs.filter(isFullyArchivedPair);
+
   const visiblePairs = onlyMismatches
-    ? row.matchingPairs.filter((pair) => {
+    ? activePairs.filter((pair) => {
         const invItems = pair.invoiceItemIds
           .map((id) => invoiceItemMap.get(id))
           .filter((i) => i !== undefined && !i.archived);
@@ -56,7 +67,7 @@ export default function MatchingArea({ row, invoiceDoc, receiptDoc }: MatchingAr
         const priceMatch = Math.abs(invPrice - recPrice) <= 5;
         return !qtyMatch || !priceMatch;
       })
-    : row.matchingPairs;
+    : activePairs;
 
   return (
     <div className="flex flex-col h-full">
@@ -67,7 +78,7 @@ export default function MatchingArea({ row, invoiceDoc, receiptDoc }: MatchingAr
               Napárované položky
             </h3>
             <span className="text-xs text-gray-500">
-              {row.matchingPairs.length} párů
+              {activePairs.length} párů{archivedPairs.length > 0 ? `, ${archivedPairs.length} archivovaných` : ''}
             </span>
           </div>
           <button
@@ -91,12 +102,12 @@ export default function MatchingArea({ row, invoiceDoc, receiptDoc }: MatchingAr
       >
         <NewPairDropZone />
 
-        {row.matchingPairs.length === 0 ? (
+        {activePairs.length === 0 && archivedPairs.length === 0 ? (
           <div className="flex items-center justify-center h-[80%] text-sm text-gray-400 italic text-center">
             Přetáhněte položky pro napárování
           </div>
-        ) : visiblePairs.length === 0 ? (
-          <div className="flex items-center justify-center h-[80%] text-sm text-gray-400 italic text-center">
+        ) : visiblePairs.length === 0 && !onlyMismatches ? null : visiblePairs.length === 0 ? (
+          <div className="flex items-center justify-center py-8 text-sm text-gray-400 italic text-center">
             Žádné neshody
           </div>
         ) : (
@@ -120,6 +131,35 @@ export default function MatchingArea({ row, invoiceDoc, receiptDoc }: MatchingAr
               />
             );
           })
+        )}
+
+        {archivedPairs.length > 0 && (
+          <>
+            <div className="mt-3 mb-1 pt-2 border-t border-gray-200 text-xs font-semibold text-gray-400 uppercase tracking-wide px-1">
+              Archivované
+            </div>
+            {archivedPairs.map((pair) => {
+              const invoiceItems = pair.invoiceItemIds
+                .map((id) => invoiceItemMap.get(id))
+                .filter((i) => i !== undefined);
+              const receiptItems = pair.receiptItemIds
+                .map((id) => receiptItemMap.get(id))
+                .filter((i) => i !== undefined);
+
+              return (
+                <PairBox
+                  key={pair.id}
+                  pair={pair}
+                  invoiceItems={invoiceItems}
+                  receiptItems={receiptItems}
+                  invoiceDocId={invoiceDoc.id}
+                  receiptDocId={receiptDoc.id}
+                  rowId={row.id}
+                  isArchived
+                />
+              );
+            })}
+          </>
         )}
       </div>
     </div>

@@ -12,6 +12,7 @@ import AddItemModal from './AddItemModal';
 interface ItemPanelProps {
   title: string;
   items: LineItem[];
+  archivedItems?: LineItem[];
   side: 'invoice' | 'receipt';
   documentId: string;
   document: Document;
@@ -19,7 +20,7 @@ interface ItemPanelProps {
   verifyOk?: VerifyStatus;
 }
 
-export default function ItemPanel({ title, items, side, documentId, document: doc, calcTotals, verifyOk }: ItemPanelProps) {
+export default function ItemPanel({ title, items, archivedItems, side, documentId, document: doc, calcTotals, verifyOk }: ItemPanelProps) {
   const { dispatch } = useAppContext();
   const [verifyOpen, setVerifyOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
@@ -108,14 +109,6 @@ export default function ItemPanel({ title, items, side, documentId, document: do
         <span className="text-xs text-gray-500">
           {items.length} {items.length === 1 ? 'nespárovaná položka' : items.length >= 2 && items.length <= 4 ? 'nespárované položky' : 'nespárovaných položek'}
         </span>
-        {(() => {
-          const archivedCount = doc.items.filter((i) => i.archived).length;
-          return archivedCount > 0 ? (
-            <div className="mt-1 text-xs font-semibold text-red-700 bg-red-50 px-2 py-0.5 rounded">
-              ⚠ {archivedCount} archivovaných položek
-            </div>
-          ) : null;
-        })()}
       </div>
 
       <div
@@ -124,14 +117,37 @@ export default function ItemPanel({ title, items, side, documentId, document: do
           isOver ? 'bg-blue-50 ring-2 ring-inset ring-blue-300' : 'bg-gray-50'
         }`}
       >
-        {items.length === 0 ? (
+        {items.length === 0 && (!archivedItems || archivedItems.length === 0) ? (
           <div className="flex items-center justify-center h-full text-sm text-gray-400 italic">
             Žádné nespárované položky
           </div>
         ) : (
-          items.map((item) => (
-            <DraggableItem key={item.id} item={item} side={side} />
-          ))
+          <>
+            {items.map((item) => (
+              <DraggableItem key={item.id} item={item} side={side} />
+            ))}
+            {archivedItems && archivedItems.length > 0 && (
+              <>
+                <div className="mt-2 mb-1 pt-2 border-t border-gray-200 text-xs font-semibold text-gray-400 uppercase tracking-wide px-1">
+                  Archivované
+                </div>
+                {archivedItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className={`bg-white border border-gray-200 border-l-4 ${borderColor} rounded p-3 mb-2 opacity-50`}
+                  >
+                    <div className="text-sm font-medium text-gray-600 break-words">
+                      {item.item_name}
+                    </div>
+                    <div className="flex items-center justify-between mt-1 text-xs text-gray-500">
+                      <span>{formatCzechNumber(item.quantity, 2)} {item.unit ?? ''}</span>
+                      <span>{formatCzechNumber(item.total_price)} Kč</span>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+          </>
         )}
       </div>
       <div className="p-2 border-t border-gray-200">

@@ -13,6 +13,7 @@ interface PairBoxProps {
   invoiceDocId: string;
   receiptDocId: string;
   rowId: string;
+  isArchived?: boolean;
 }
 
 function DraggablePairItem({
@@ -69,10 +70,10 @@ function PairDropZone({
   );
 }
 
-export default function PairBox({ pair, invoiceItems, receiptItems, invoiceDocId, receiptDocId, rowId }: PairBoxProps) {
+export default function PairBox({ pair, invoiceItems, receiptItems, invoiceDocId, receiptDocId, rowId, isArchived }: PairBoxProps) {
   const { dispatch } = useAppContext();
-  const invItems = invoiceItems.filter((i) => !i.archived);
-  const recItems = receiptItems.filter((i) => !i.archived);
+  const invItems = isArchived ? invoiceItems : invoiceItems.filter((i) => !i.archived);
+  const recItems = isArchived ? receiptItems : receiptItems.filter((i) => !i.archived);
   const archivedInvoiceCount = invoiceItems.filter((i) => i.archived).length;
   const archivedReceiptCount = receiptItems.filter((i) => i.archived).length;
 
@@ -133,11 +134,20 @@ export default function PairBox({ pair, invoiceItems, receiptItems, invoiceDocId
 
     const hasError = bothSidesHaveItems && (!qtyMatch || !priceMatch);
 
-    return (
-      <div className="space-y-1">
-        {items.map((item) => (
-          <DraggablePairItem key={item.id} item={item} side={side} pairId={pair.id}>
-          <div className={`${borderClass} px-2 py-0.5 relative group rounded${hasError ? ' bg-red-50' : ''}`}>
+    const itemContent = (item: LineItem) => (
+      <div className={`${borderClass} px-2 py-0.5 relative group rounded${!isArchived && hasError ? ' bg-red-50' : ''}`}>
+        {isArchived ? (
+          <>
+            <div className={`text-sm font-medium text-gray-500${isInvoice ? ' text-right' : ''}`}>{item.item_name}</div>
+            <div className={`flex items-center gap-1 mt-0.5 text-xs text-gray-400${isInvoice ? ' justify-end' : ''}`}>
+              <span>{formatCzechNumber(item.quantity, 2)}</span>
+              <span>{item.unit ?? ''}</span>
+              <span className="text-gray-300 mx-0.5">·</span>
+              <span>{formatCzechNumber(item.total_price)} Kč</span>
+            </div>
+          </>
+        ) : (
+          <>
             <InlineEditable
               value={item.item_name}
               onSave={(v) => handleItemFieldEdit(side, documentId, item, 'item_name', v)}
@@ -172,41 +182,69 @@ export default function PairBox({ pair, invoiceItems, receiptItems, invoiceDocId
                 <span title="Ručně upraveno" className="text-blue-500 text-[10px] leading-none">✎</span>
               )}
             </div>
-          </div>
-          </DraggablePairItem>
+          </>
+        )}
+      </div>
+    );
+
+    return (
+      <div className="space-y-1">
+        {items.map((item) => (
+          isArchived ? (
+            <div key={item.id}>{itemContent(item)}</div>
+          ) : (
+            <DraggablePairItem key={item.id} item={item} side={side} pairId={pair.id}>
+              {itemContent(item)}
+            </DraggablePairItem>
+          )
         ))}
       </div>
     );
   };
 
+  const invoiceSideContent = (
+    <>
+      {renderItemList(invItems, 'invoice', invoiceDocId)}
+      {!isArchived && archivedInvoiceCount > 0 && (
+        <div className="px-2 py-0.5 text-xs text-red-600 font-medium">
+          ⚠ {archivedInvoiceCount} archivovaná {archivedInvoiceCount === 1 ? 'položka' : archivedInvoiceCount < 5 ? 'položky' : 'položek'}
+        </div>
+      )}
+    </>
+  );
+
+  const receiptSideContent = (
+    <>
+      {renderItemList(recItems, 'receipt', receiptDocId)}
+      {!isArchived && archivedReceiptCount > 0 && (
+        <div className="px-2 py-0.5 text-xs text-red-600 font-medium">
+          ⚠ {archivedReceiptCount} archivovaná {archivedReceiptCount === 1 ? 'položka' : archivedReceiptCount < 5 ? 'položky' : 'položek'}
+        </div>
+      )}
+    </>
+  );
+
   return (
-    <div className="bg-white border border-gray-200 rounded-lg shadow-sm mb-1.5">
+    <div className={`bg-white border border-gray-200 rounded-lg shadow-sm mb-1.5${isArchived ? ' opacity-50' : ''}`}>
       {/* Two-column pair display */}
       <div className="flex">
         {/* Invoice side */}
-        <PairDropZone pairId={pair.id} side="invoice">
-          {renderItemList(invItems, 'invoice', invoiceDocId)}
-          {archivedInvoiceCount > 0 && (
-            <div className="px-2 py-0.5 text-xs text-red-600 font-medium">
-              ⚠ {archivedInvoiceCount} archivovaná {archivedInvoiceCount === 1 ? 'položka' : archivedInvoiceCount < 5 ? 'položky' : 'položek'}
-            </div>
-          )}
-        </PairDropZone>
+        {isArchived ? (
+          <div className="w-1/2 min-w-0 rounded">{invoiceSideContent}</div>
+        ) : (
+          <PairDropZone pairId={pair.id} side="invoice">{invoiceSideContent}</PairDropZone>
+        )}
 
         {/* Divider */}
         <div className="w-px bg-gray-200 my-2" />
 
         {/* Receipt side */}
-        <PairDropZone pairId={pair.id} side="receipt">
-          {renderItemList(recItems, 'receipt', receiptDocId)}
-          {archivedReceiptCount > 0 && (
-            <div className="px-2 py-0.5 text-xs text-red-600 font-medium">
-              ⚠ {archivedReceiptCount} archivovaná {archivedReceiptCount === 1 ? 'položka' : archivedReceiptCount < 5 ? 'položky' : 'položek'}
-            </div>
-          )}
-        </PairDropZone>
+        {isArchived ? (
+          <div className="w-1/2 min-w-0 rounded">{receiptSideContent}</div>
+        ) : (
+          <PairDropZone pairId={pair.id} side="receipt">{receiptSideContent}</PairDropZone>
+        )}
       </div>
-
     </div>
   );
 }
