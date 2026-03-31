@@ -32,8 +32,8 @@
     "@types/uuid": "^10.0.0",
     "autoprefixer": "^10.4.20",
     "concurrently": "^9.1.2",
-    "electron": "^33.3.1",
-    "electron-builder": "^25.1.8",
+    "electron": "^41.1.0",
+    "electron-builder": "^26.8.1",
     "postcss": "^8.5.1",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.3",
@@ -41,7 +41,7 @@
   },
   "build": {
     "appId": "com.porovnani-dokladu.app",
-    "productName": "Porovnání Dokladů",
+    "productName": "Porovnávač dokladů",
     "directories": {
       "output": "release"
     },
@@ -51,12 +51,18 @@
       "package.json"
     ],
     "win": {
-      "target": "nsis",
-      "icon": "public/icon.png"
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ],
+      "icon": "public/icon.png",
+      "executableName": "PorovnavacDokladu"
     },
     "mac": {
       "target": "dmg",
-      "icon": "public/icon.png"
+      "icon": "public/icon.png",
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
     },
     "nsis": {
       "oneClick": false,

@@ -1,8 +1,20 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, protocol } from 'electron';
+import * as fs from 'fs';
 import * as path from 'path';
 import Store from 'electron-store';
 
 const isDev = !app.isPackaged;
+
+// ─── Custom protocol (production only) ────────────────────────────────────────
+// Needed because Next.js static export uses absolute paths like /_next/static/…
+// which break under the file:// protocol. We serve everything from out/ via app://
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'app',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+  },
+]);
 
 // ─── Persistent store ─────────────────────────────────────────────────────────
 
@@ -31,7 +43,7 @@ const store = new Store<StoreSchema>({
   defaults: {
     settings: {
       apiKey: '',
-      selectedModel: 'google/gemini-3-pro-preview',
+      selectedModel: 'google/gemini-3.1-pro-preview',
       customModels: [],
     },
     usageLog: [],
@@ -54,15 +66,80 @@ function createWindow() {
     },
   });
 
+  win.webContents.on('did-finish-load', () => {
+    win.focus();
+  });
+
   if (isDev) {
     win.loadURL('http://localhost:3456');
     win.webContents.openDevTools();
   } else {
-    win.loadFile(path.join(__dirname, '..', 'out', 'index.html'));
+    win.loadURL('app://localhost/');
   }
 }
 
 app.whenReady().then(() => {
+  // Serve Next.js static export via app:// protocol.
+  // Using fs directly (not net.fetch+file://) avoids Chromium's cross-protocol
+  // security checks that would block subsequent in-app navigation.
+  const outDir = path.join(__dirname, '..', '..', 'out');
+  const MIME_TYPES: Record<string, string> = {
+    '.html': 'text/html',
+    '.js': 'application/javascript',
+    '.css': 'text/css',
+    '.json': 'application/json',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.svg': 'image/svg+xml',
+    '.ico': 'image/x-icon',
+    '.woff': 'font/woff',
+    '.woff2': 'font/woff2',
+    '.ttf': 'font/ttf',
+  };
+  const logFile = path.join(app.getPath('userData'), 'protocol-debug.log');
+  const logLine = (msg: string) => {
+    const line = `[${new Date().toISOString()}] ${msg}\n`;
+    fs.appendFileSync(logFile, line);
+  };
+  logLine(`=== App started, outDir: ${outDir} ===`);
+
+  protocol.handle('app', async (request) => {
+    const { pathname } = new URL(request.url);
+    const parts = pathname.split('/').filter((x) => x !== '').map(decodeURIComponent);
+    let fullPath = parts.length === 0
+      ? path.join(outDir, 'index.html')
+      : path.join(outDir, ...parts);
+
+    // isHtmlRoute must be computed BEFORE appending index.html
+    const isHtmlRoute = !path.extname(fullPath);
+    if (isHtmlRoute) {
+      fullPath = path.join(fullPath, 'index.html');
+    }
+
+    try {
+      const data = await fs.promises.readFile(fullPath);
+      const mimeType = MIME_TYPES[path.extname(fullPath).toLowerCase()] ?? 'application/octet-stream';
+      logLine(`OK  ${pathname} → ${fullPath}`);
+      return new Response(data, { headers: { 'Content-Type': mimeType } });
+    } catch {
+      // SPA fallback: for HTML routes without a pre-generated file (e.g. /detail/[uuid]/),
+      // serve index.html so Next.js client-side router can handle the route.
+      if (isHtmlRoute) {
+        logLine(`SPA ${pathname} → index.html (fallback)`);
+        try {
+          const indexData = await fs.promises.readFile(path.join(outDir, 'index.html'));
+          return new Response(indexData, { headers: { 'Content-Type': 'text/html' } });
+        } catch {
+          logLine(`ERR ${pathname} → index.html fallback also failed`);
+          return new Response('Not found', { status: 404 });
+        }
+      }
+      logLine(`404 ${pathname} → ${fullPath}`);
+      return new Response('Not found', { status: 404 });
+    }
+  });
+
   createWindow();
 
   app.on('activate', () => {
@@ -113,7 +190,6 @@ const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
 ipcMain.handle('usage:log', (_event, entry: StoreSchema['usageLog'][number]) => {
   const log = store.get('usageLog') as StoreSchema['usageLog'];
   const cutoff = new Date(Date.now() - ONE_YEAR_MS).toISOString();
-  // Prune entries older than 1 year, then append new entry
   const pruned = log.filter((e) => e.timestamp >= cutoff);
   pruned.push(entry);
   store.set('usageLog', pruned);
