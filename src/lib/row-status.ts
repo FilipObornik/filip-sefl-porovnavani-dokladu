@@ -17,7 +17,10 @@ export function computeRowStatus(
   receiptDoc: Document,
   matchingPairs: MatchingPair[],
   comparison: DocumentComparison,
+  tolerances?: { item: number; extraction: number },
 ): RowStatus {
+  const toleranceItem = tolerances?.item ?? 5;
+  const toleranceExtraction = tolerances?.extraction ?? VERIFY_TOLERANCE;
   const warnings: string[] = [];
 
   const archivedInvoice = invoiceDoc.items.filter((i) => i.archived).length;
@@ -47,7 +50,7 @@ export function computeRowStatus(
       if (invQty !== recQty) qtyMismatch++;
       const invPrice = invItems.reduce((s, i) => s + (i.total_price ?? 0), 0);
       const recPrice = recItems.reduce((s, i) => s + (i.total_price ?? 0), 0);
-      if (Math.abs(invPrice - recPrice) > 5) priceMismatch++;
+      if (Math.abs(invPrice - recPrice) > toleranceItem) priceMismatch++;
     }
   }
   if (qtyMismatch > 0) warnings.push(`Nesedící množství: ${qtyMismatch} ${qtyMismatch === 1 ? 'pár' : qtyMismatch < 5 ? 'páry' : 'párů'}`);
@@ -65,13 +68,13 @@ export function computeRowStatus(
     .reduce((s, i) => s + (i.total_price ?? 0), 0);
   if (
     invoiceDoc.documentTotals?.total_price != null &&
-    Math.abs(totalPriceInvoice - invoiceDoc.documentTotals.total_price) > VERIFY_TOLERANCE
+    Math.abs(totalPriceInvoice - invoiceDoc.documentTotals.total_price) > toleranceExtraction
   ) {
     warnings.push('Součet položek neodpovídá hlavičce faktury');
   }
   if (
     receiptDoc.documentTotals?.total_price != null &&
-    Math.abs(totalPriceReceipt - receiptDoc.documentTotals.total_price) > VERIFY_TOLERANCE
+    Math.abs(totalPriceReceipt - receiptDoc.documentTotals.total_price) > toleranceExtraction
   ) {
     warnings.push('Součet položek neodpovídá hlavičce příjemky');
   }

@@ -4,7 +4,7 @@ import { Document, LineItem, MatchingPair, VERIFY_TOLERANCE, VerifyStatus } from
  * Compare a document's calculated item totals against the stated document totals.
  * Returns null if the document has no stated totals to compare against.
  */
-export function docTotalsMatch(doc: Document, calcPrice: number, calcVat: number, calcWithVat: number): VerifyStatus {
+export function docTotalsMatch(doc: Document, calcPrice: number, calcVat: number, calcWithVat: number, tolerance = VERIFY_TOLERANCE): VerifyStatus {
   const t = doc.documentTotals;
   if (!t) return null;
   if (t.total_price === null && t.total_vat === null && t.total_price_with_vat === null) return null;
@@ -15,7 +15,7 @@ export function docTotalsMatch(doc: Document, calcPrice: number, calcVat: number
     t.total_price_with_vat !== null ? Math.abs(calcWithVat - t.total_price_with_vat) : null,
   ].filter((d): d is number => d !== null);
 
-  if (diffs.some((d) => d > VERIFY_TOLERANCE)) return 'error';
+  if (diffs.some((d) => d > tolerance)) return 'error';
   if (diffs.some((d) => d > 0)) return 'tolerance';
   return 'ok';
 }
@@ -61,7 +61,7 @@ export interface RowComparison {
  * - Price: +/- 5 CZK tolerance
  * - VAT: +/- 5 CZK tolerance
  */
-export function compareRow(pairs: MatchingPair[], invoiceItems: LineItem[], receiptItems: LineItem[]): RowComparison {
+export function compareRow(pairs: MatchingPair[], invoiceItems: LineItem[], receiptItems: LineItem[], priceTolerance = 5): RowComparison {
   const invoiceMap = new Map(invoiceItems.map((i) => [i.id, i]));
   const receiptMap = new Map(receiptItems.map((i) => [i.id, i]));
 
@@ -94,8 +94,8 @@ export function compareRow(pairs: MatchingPair[], invoiceItems: LineItem[], rece
   const vatDiff = totalVatInvoice - totalVatReceipt;
 
   const quantityValid = quantityDiff === 0;
-  const priceValid = Math.abs(priceDiff) <= 5;
-  const vatValid = Math.abs(vatDiff) <= 5;
+  const priceValid = Math.abs(priceDiff) <= priceTolerance;
+  const vatValid = Math.abs(vatDiff) <= priceTolerance;
   const checksumValid = quantityValid && priceValid && vatValid;
 
   return {
@@ -122,6 +122,7 @@ export function compareRow(pairs: MatchingPair[], invoiceItems: LineItem[], rece
 export function compareDocuments(
   invoiceItems: LineItem[],
   receiptItems: LineItem[],
+  priceTolerance = 5,
 ): DocumentComparison {
   let totalQuantityInvoice = 0;
   let totalPriceInvoice = 0;
@@ -150,10 +151,10 @@ export function compareDocuments(
   }
 
   const quantityValid = totalQuantityInvoice - totalQuantityReceipt === 0;
-  const priceValid = Math.abs(totalPriceInvoice - totalPriceReceipt) <= 5;
-  const vatValid = Math.abs(totalVatInvoice - totalVatReceipt) <= 5;
+  const priceValid = Math.abs(totalPriceInvoice - totalPriceReceipt) <= priceTolerance;
+  const vatValid = Math.abs(totalVatInvoice - totalVatReceipt) <= priceTolerance;
   const priceWithVatValid =
-    Math.abs(totalPriceWithVatInvoice - totalPriceWithVatReceipt) <= 5;
+    Math.abs(totalPriceWithVatInvoice - totalPriceWithVatReceipt) <= priceTolerance;
   const checksumValid =
     quantityValid && priceValid && vatValid && priceWithVatValid;
 

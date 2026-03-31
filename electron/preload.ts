@@ -14,6 +14,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     apiKey: string;
     selectedModel: string;
     customModels: { id: string; name: string }[];
+    toleranceExtraction: number;
+    toleranceTotal: number;
+    toleranceItem: number;
   }) => ipcRenderer.invoke('settings:set', settings),
 
   // Usage log
@@ -32,4 +35,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   }) => ipcRenderer.invoke('usage:log', entry),
   getUsageLog: () =>
     ipcRenderer.invoke('usage:get'),
+
+  // File write
+  writeFile: (filePath: string, content: string) =>
+    ipcRenderer.invoke('file:write', filePath, content),
+
+  // App close
+  onWillClose: (cb: () => void) =>
+    ipcRenderer.on('app:will-close', () => cb()),
+  confirmClose: () =>
+    ipcRenderer.invoke('app:confirm-close'),
 });

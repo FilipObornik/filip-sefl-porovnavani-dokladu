@@ -23,6 +23,9 @@ interface StoreSchema {
     apiKey: string;
     selectedModel: string;
     customModels: { id: string; name: string }[];
+    toleranceExtraction: number;
+    toleranceTotal: number;
+    toleranceItem: number;
   };
   usageLog: Array<{
     id: string;
@@ -45,12 +48,17 @@ const store = new Store<StoreSchema>({
       apiKey: '',
       selectedModel: 'google/gemini-3.1-pro-preview',
       customModels: [],
+      toleranceExtraction: 5,
+      toleranceTotal: 5,
+      toleranceItem: 1,
     },
     usageLog: [],
   },
 });
 
 // ─── Window ────────────────────────────────────────────────────────────────────
+
+let mainWindow: BrowserWindow | null = null;
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -66,8 +74,16 @@ function createWindow() {
     },
   });
 
+  mainWindow = win;
+
   win.webContents.on('did-finish-load', () => {
     win.focus();
+  });
+
+  // Intercept close to allow renderer to prompt for unsaved work
+  win.on('close', (e) => {
+    e.preventDefault();
+    win.webContents.send('app:will-close');
   });
 
   if (isDev) {
@@ -199,4 +215,18 @@ ipcMain.handle('usage:get', () => {
   const log = store.get('usageLog') as StoreSchema['usageLog'];
   const cutoff = new Date(Date.now() - ONE_YEAR_MS).toISOString();
   return log.filter((e) => e.timestamp >= cutoff);
+});
+
+// ─── File write IPC ────────────────────────────────────────────────────────────
+
+ipcMain.handle('file:write', (_event, filePath: string, content: string) => {
+  fs.writeFileSync(filePath, content, 'utf-8');
+});
+
+// ─── Close IPC ─────────────────────────────────────────────────────────────────
+
+ipcMain.handle('app:confirm-close', () => {
+  if (mainWindow) {
+    mainWindow.destroy();
+  }
 });

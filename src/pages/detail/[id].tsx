@@ -4,6 +4,7 @@ import { useRouter } from 'next/router';
 import { useAppContext } from '@/state/app-context';
 import { compareDocuments, docTotalsMatch } from '@/services/comparison-service';
 import { computeRowStatus } from '@/lib/row-status';
+import { useSettings } from '@/state/settings-context';
 import DetailLayout from '@/components/detail/DetailLayout';
 import SummaryBadge from '@/components/detail/SummaryBadge';
 
@@ -14,6 +15,7 @@ export default function DetailPage() {
   const statusBtnRef = useRef<HTMLButtonElement>(null);
   const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number } | null>(null);
 
+  const { settings } = useSettings();
   const row = state.comparisonRows.find((r) => r.id === id);
 
   const invoiceDoc = useMemo(() => {
@@ -31,8 +33,9 @@ export default function DetailPage() {
     return compareDocuments(
       invoiceDoc.items.filter((i) => !i.archived),
       receiptDoc.items.filter((i) => !i.archived),
+      settings.toleranceTotal,
     );
-  }, [invoiceDoc, receiptDoc]);
+  }, [invoiceDoc, receiptDoc, settings.toleranceTotal]);
 
   // CalcTotals for display ("Spočítáno") includes ALL items (incl. archived) — for extraction quality check
   const invoiceCalcTotalsAll = useMemo(() => {
@@ -58,18 +61,21 @@ export default function DetailPage() {
   // Verify (✓/✗ banner) uses same totals as the display (all items incl. archived)
   const invoiceVerify = useMemo(() => {
     if (!invoiceDoc || !invoiceCalcTotalsAll) return null;
-    return docTotalsMatch(invoiceDoc, invoiceCalcTotalsAll.price, invoiceCalcTotalsAll.vat, invoiceCalcTotalsAll.priceWithVat);
-  }, [invoiceDoc, invoiceCalcTotalsAll]);
+    return docTotalsMatch(invoiceDoc, invoiceCalcTotalsAll.price, invoiceCalcTotalsAll.vat, invoiceCalcTotalsAll.priceWithVat, settings.toleranceExtraction);
+  }, [invoiceDoc, invoiceCalcTotalsAll, settings.toleranceExtraction]);
 
   const receiptVerify = useMemo(() => {
     if (!receiptDoc || !receiptCalcTotalsAll) return null;
-    return docTotalsMatch(receiptDoc, receiptCalcTotalsAll.price, receiptCalcTotalsAll.vat, receiptCalcTotalsAll.priceWithVat);
-  }, [receiptDoc, receiptCalcTotalsAll]);
+    return docTotalsMatch(receiptDoc, receiptCalcTotalsAll.price, receiptCalcTotalsAll.vat, receiptCalcTotalsAll.priceWithVat, settings.toleranceExtraction);
+  }, [receiptDoc, receiptCalcTotalsAll, settings.toleranceExtraction]);
 
   const { warnings, isHardError } = useMemo(() => {
     if (!invoiceDoc || !receiptDoc || !comparison || !row) return { warnings: [], isHardError: false };
-    return computeRowStatus(invoiceDoc, receiptDoc, row.matchingPairs, comparison);
-  }, [invoiceDoc, receiptDoc, comparison, row]);
+    return computeRowStatus(invoiceDoc, receiptDoc, row.matchingPairs, comparison, {
+      item: settings.toleranceItem,
+      extraction: settings.toleranceExtraction,
+    });
+  }, [invoiceDoc, receiptDoc, comparison, row, settings.toleranceItem, settings.toleranceExtraction]);
 
   // Redirect if row not found or not done
   useEffect(() => {

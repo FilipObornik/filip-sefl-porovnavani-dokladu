@@ -171,9 +171,15 @@ function appReducer(state: AppState, action: AppAction): AppState {
     }
 
     case 'ADD_LINE_ITEM': {
+      // Mark all fields as manually edited on first creation
+      const ALL_EDITABLE_FIELDS = ['item_name', 'quantity', 'unit', 'unit_price', 'total_price', 'total_price_with_vat', 'vat_rate'];
+      const itemWithEdited = {
+        ...action.item,
+        edited_fields: Array.from(new Set([...(action.item.edited_fields ?? []), ...ALL_EDITABLE_FIELDS])),
+      };
       const addItem = (docs: typeof state.invoices) =>
         docs.map((d) =>
-          d.id === action.documentId ? { ...d, items: [...d.items, action.item] } : d
+          d.id === action.documentId ? { ...d, items: [...d.items, itemWithEdited] } : d
         );
       return {
         ...state,

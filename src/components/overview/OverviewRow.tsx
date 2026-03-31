@@ -45,13 +45,17 @@ export default function OverviewRow({ row }: OverviewRowProps) {
     return compareDocuments(
       invoice.items.filter((i) => !i.archived),
       receipt.items.filter((i) => !i.archived),
+      settings.toleranceTotal,
     );
-  }, [row.status, invoice, receipt]);
+  }, [row.status, invoice, receipt, settings.toleranceTotal]);
 
   const { warnings, isHardError } = useMemo(() => {
     if (!comparison || !invoice || !receipt) return { warnings: [], isHardError: false };
-    return computeRowStatus(invoice, receipt, row.matchingPairs, comparison);
-  }, [comparison, invoice, receipt, row.matchingPairs]);
+    return computeRowStatus(invoice, receipt, row.matchingPairs, comparison, {
+      item: settings.toleranceItem,
+      extraction: settings.toleranceExtraction,
+    });
+  }, [comparison, invoice, receipt, row.matchingPairs, settings.toleranceItem, settings.toleranceExtraction]);
 
   // Values needed for table cell display
   const totalPriceInvoice = comparison ? comparison.totalPriceInvoice : null;

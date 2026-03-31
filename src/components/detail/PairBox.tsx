@@ -4,6 +4,7 @@ import { MatchingPair, LineItem, NUMERIC_LINE_ITEM_FIELDS } from '@/state/types'
 import { dndPairDropId } from '@/constants/dnd';
 import { formatCzechNumber, parseCzechNumber } from '@/lib/number-utils';
 import { useAppContext } from '@/state/app-context';
+import { useSettings } from '@/state/settings-context';
 import InlineEditable from './InlineEditable';
 
 interface PairBoxProps {
@@ -72,6 +73,7 @@ function PairDropZone({
 
 export default function PairBox({ pair, invoiceItems, receiptItems, invoiceDocId, receiptDocId, rowId, isArchived }: PairBoxProps) {
   const { dispatch } = useAppContext();
+  const { settings } = useSettings();
   const invItems = isArchived ? invoiceItems : invoiceItems.filter((i) => !i.archived);
   const recItems = isArchived ? receiptItems : receiptItems.filter((i) => !i.archived);
   const archivedInvoiceCount = invoiceItems.filter((i) => i.archived).length;
@@ -84,7 +86,7 @@ export default function PairBox({ pair, invoiceItems, receiptItems, invoiceDocId
   const receiptTotalQty = recItems.reduce((s, i) => s + (i.quantity ?? 0), 0);
 
   const bothSidesHaveItems = invItems.length > 0 && recItems.length > 0;
-  const priceMatch = bothSidesHaveItems && Math.abs(invoiceTotalPrice - receiptTotalPrice) <= 5;
+  const priceMatch = bothSidesHaveItems && Math.abs(invoiceTotalPrice - receiptTotalPrice) <= settings.toleranceItem;
   const qtyMatch = bothSidesHaveItems && invoiceTotalQty === receiptTotalQty;
 
   const handleItemFieldEdit = (

@@ -10,7 +10,7 @@ interface AddItemModalProps {
   onClose: () => void;
 }
 
-const EMPTY = { item_name: '', quantity: '', unit: '', unit_price: '', total_price: '', total_price_with_vat: '', vat_rate: '' };
+const EMPTY = { item_name: '', quantity: '', unit: '', unit_price: '', vat_rate: '21' };
 
 export default function AddItemModal({ side, onAdd, onClose }: AddItemModalProps) {
   const [fields, setFields] = useState(EMPTY);
@@ -23,22 +23,29 @@ export default function AddItemModal({ side, onAdd, onClose }: AddItemModalProps
     return () => window.removeEventListener('keydown', handleKey);
   }, [onClose]);
 
-  const set = (field: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement>) =>
+  const set = (field: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setFields((f) => ({ ...f, [field]: e.target.value }));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const name = fields.item_name.trim();
     if (!name) return;
+    const qty = parseCzechNumber(fields.quantity);
+    const unitPrice = parseCzechNumber(fields.unit_price);
+    const vatRate = parseCzechNumber(fields.vat_rate);
+    const totalPrice = qty !== null && unitPrice !== null ? qty * unitPrice : null;
+    const totalPriceWithVat = totalPrice !== null && vatRate !== null
+      ? totalPrice * (1 + vatRate / 100)
+      : totalPrice;
     const item: LineItem = {
       id: uuidv4(),
       item_name: name,
-      quantity: parseCzechNumber(fields.quantity),
+      quantity: qty,
       unit: fields.unit.trim() || null,
-      unit_price: parseCzechNumber(fields.unit_price),
-      total_price: parseCzechNumber(fields.total_price),
-      total_price_with_vat: parseCzechNumber(fields.total_price_with_vat),
-      vat_rate: parseCzechNumber(fields.vat_rate),
+      unit_price: unitPrice,
+      total_price: totalPrice,
+      total_price_with_vat: totalPriceWithVat,
+      vat_rate: vatRate,
       sku: null,
     };
     onAdd(item);
@@ -57,7 +64,7 @@ export default function AddItemModal({ side, onAdd, onClose }: AddItemModalProps
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-white w-[420px] rounded-lg shadow-2xl overflow-hidden">
+      <div className="bg-white w-[380px] rounded-lg shadow-2xl overflow-hidden">
         {/* Header */}
         <div className={`${accentBg} text-white px-5 py-3 flex items-center justify-between`}>
           <h2 className="text-base font-semibold">Přidat položku</h2>
@@ -113,7 +120,7 @@ export default function AddItemModal({ side, onAdd, onClose }: AddItemModalProps
             </div>
           </div>
 
-          {/* Ceny */}
+          {/* Jedn. cena + DPH */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Jedn. cena (Kč)</label>
@@ -127,40 +134,16 @@ export default function AddItemModal({ side, onAdd, onClose }: AddItemModalProps
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Cena bez DPH (Kč)</label>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={fields.total_price}
-                onChange={set('total_price')}
-                placeholder="např. 1 500,00"
-                className={inputClass}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">DPH (%)</label>
-              <input
-                type="text"
-                inputMode="decimal"
+              <select
                 value={fields.vat_rate}
                 onChange={set('vat_rate')}
-                placeholder="např. 21"
                 className={inputClass}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Cena s DPH (Kč)</label>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={fields.total_price_with_vat}
-                onChange={set('total_price_with_vat')}
-                placeholder="např. 1 815,00"
-                className={inputClass}
-              />
+              >
+                <option value="0">0 %</option>
+                <option value="12">12 %</option>
+                <option value="21">21 %</option>
+              </select>
             </div>
           </div>
 

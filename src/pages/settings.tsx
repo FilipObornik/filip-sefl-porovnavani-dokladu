@@ -114,6 +114,9 @@ export default function SettingsPage() {
   const [customModels, setCustomModels] = useState<CustomModelConfig[]>([]);
   const [newModelId, setNewModelId] = useState('');
   const [newModelName, setNewModelName] = useState('');
+  const [toleranceExtraction, setToleranceExtraction] = useState(5);
+  const [toleranceTotal, setToleranceTotal] = useState(5);
+  const [toleranceItem, setToleranceItem] = useState(1);
   const [saved, setSaved] = useState(false);
 
   const [usageLog, setUsageLog] = useState<UsageEntry[]>([]);
@@ -126,6 +129,9 @@ export default function SettingsPage() {
       setApiKeyInput(settings.apiKey);
       setSelectedModel(settings.selectedModel);
       setCustomModels(settings.customModels ?? []);
+      setToleranceExtraction(settings.toleranceExtraction ?? 5);
+      setToleranceTotal(settings.toleranceTotal ?? 5);
+      setToleranceItem(settings.toleranceItem ?? 1);
     }
   }, [authenticated, isLoaded, settings]);
 
@@ -142,10 +148,13 @@ export default function SettingsPage() {
       apiKey: apiKeyInput.trim(),
       selectedModel,
       customModels,
+      toleranceExtraction,
+      toleranceTotal,
+      toleranceItem,
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
-  }, [apiKeyInput, selectedModel, customModels, updateSettings]);
+  }, [apiKeyInput, selectedModel, customModels, toleranceExtraction, toleranceTotal, toleranceItem, updateSettings]);
 
   const handleAddCustomModel = () => {
     const id = newModelId.trim();
@@ -309,6 +318,34 @@ export default function SettingsPage() {
             <p className="text-xs text-gray-400 mt-1">
               Model musí podporovat obrazový vstup (vision). ID ve formátu provider/model-name.
             </p>
+          </div>
+        </section>
+
+        {/* ── Tolerance ── */}
+        <section className="bg-white border border-gray-200 rounded-lg p-6">
+          <h2 className="text-base font-semibold text-gray-800 mb-1">Tolerance (Kč)</h2>
+          <p className="text-xs text-gray-500 mb-4">Maximální povolený rozdíl v Kč pro jednotlivé úrovně porovnání.</p>
+          <div className="space-y-3">
+            {[
+              { label: 'Vyčtení: součet položek vs. hlavička dokladu', value: toleranceExtraction, set: setToleranceExtraction },
+              { label: 'Celkový součet: faktura vs. příjemka', value: toleranceTotal, set: setToleranceTotal },
+              { label: 'Jednotlivý pár: položka vs. položka', value: toleranceItem, set: setToleranceItem },
+            ].map(({ label, value, set }) => (
+              <div key={label} className="flex items-center justify-between gap-4">
+                <label className="text-sm text-gray-700 flex-1">{label}</label>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={value}
+                    onChange={(e) => set(Math.max(0, Number(e.target.value)))}
+                    className="w-20 px-2 py-1.5 border border-gray-300 rounded text-sm text-right focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  />
+                  <span className="text-sm text-gray-500">Kč</span>
+                </div>
+              </div>
+            ))}
           </div>
         </section>
 
