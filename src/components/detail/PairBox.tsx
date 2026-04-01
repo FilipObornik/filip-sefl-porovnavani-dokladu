@@ -227,7 +227,7 @@ export default function PairBox({ pair, invoiceItems, receiptItems, invoiceDocId
   );
 
   return (
-    <div className={`bg-white border border-gray-200 rounded-lg shadow-sm mb-1.5${isArchived ? ' opacity-50' : ''}`}>
+    <div className={`border rounded-lg shadow-sm mb-1.5${isArchived ? ' bg-gray-200 border-gray-300' : ' bg-white border-gray-200'}`}>
       {/* Two-column pair display */}
       <div className="flex">
         {/* Invoice side */}

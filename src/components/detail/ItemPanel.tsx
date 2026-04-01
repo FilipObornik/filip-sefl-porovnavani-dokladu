@@ -138,7 +138,7 @@ export default function ItemPanel({ title, items, archivedItems, side, documentI
                 {archivedItems.map((item) => (
                   <div
                     key={item.id}
-                    className={`bg-white border border-gray-200 border-l-4 ${itemBorderColor} rounded p-3 mb-2 opacity-50`}
+                    className={`bg-gray-200 border border-gray-300 border-l-4 ${itemBorderColor} rounded p-3 mb-2`}
                   >
                     <div className="text-sm font-medium text-gray-600 break-words">
                       {item.item_name}
