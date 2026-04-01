@@ -25,3 +25,14 @@ export function formatCzechNumber(value: number | null | undefined, decimals = 2
     maximumFractionDigits: decimals,
   });
 }
+
+/**
+ * Format number without trailing zeros (e.g. 8.00 → "8", 8.50 → "8,5").
+ */
+export function formatCzechNumberAuto(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '–';
+  return value.toLocaleString('cs-CZ', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+}

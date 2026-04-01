@@ -7,7 +7,7 @@ import FileDropZone from './FileDropZone';
 import { processDocument } from '@/services/document-processor';
 import { compareDocuments } from '@/services/comparison-service';
 import { autoMatch } from '@/services/matching-service';
-import { formatCzechNumber } from '@/lib/number-utils';
+import { formatCzechNumber, formatCzechNumberAuto } from '@/lib/number-utils';
 import { computeRowStatus } from '@/lib/row-status';
 import { useSettings } from '@/state/settings-context';
 
@@ -268,7 +268,7 @@ export default function OverviewRow({ row }: OverviewRowProps) {
       <td className="px-3 py-2 text-center text-sm whitespace-nowrap">
         {receiptItemCount !== null && invoiceItemCount !== null && (receiptItemCount > 0 || invoiceItemCount > 0) ? (
           <span className={receiptItemCount === invoiceItemCount ? 'text-green-700 font-medium' : 'text-red-700 font-medium'}>
-            {formatCzechNumber(invoiceItemCount, 2)}/{formatCzechNumber(receiptItemCount, 2)}
+            {formatCzechNumberAuto(invoiceItemCount)}/{formatCzechNumberAuto(receiptItemCount)}
           </span>
         ) : (
           <span className="text-gray-400">–</span>
