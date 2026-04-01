@@ -64,7 +64,9 @@ export default function OverviewRow({ row }: OverviewRowProps) {
   const vatOk = comparison ? comparison.vatValid : null;
   const invoiceItemCount = invoice ? invoice.items.filter((i) => !i.archived).length : null;
   const receiptItemCount = receipt ? receipt.items.filter((i) => !i.archived).length : null;
-  const documentClosed = row.status === 'done' && receipt ? receipt.documentClosed : null;
+  const documentClosed = receipt && receipt.status === 'done'
+    ? (receipt.documentClosed ?? false)
+    : null;
 
   const canProcess = row.status === 'ready' || row.status === 'done' || row.status === 'error';
   const isProcessing = row.status === 'processing';
