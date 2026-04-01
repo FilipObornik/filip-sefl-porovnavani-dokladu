@@ -10,8 +10,8 @@ interface SummaryBadgeProps {
 
 export default function SummaryBadge({ label, invoiceVal, receiptVal, valid, suffix }: SummaryBadgeProps) {
   const colorClass = valid ? 'text-green-700' : 'text-red-700';
-  const bgClass = valid ? 'bg-green-50' : 'bg-red-50';
-  const borderClass = valid ? 'border-green-200' : 'border-red-200';
+  const bgClass = valid ? 'bg-green-50' : 'bg-red-100';
+  const borderClass = valid ? 'border-green-200' : 'border-red-400';
 
   return (
     <div className={`flex items-center gap-2 px-3 py-1 rounded border ${bgClass} ${borderClass}`}>
