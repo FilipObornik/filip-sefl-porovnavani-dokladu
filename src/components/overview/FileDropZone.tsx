@@ -8,6 +8,7 @@ interface FileDropZoneProps {
   side: 'invoice' | 'receipt';
   rowId: string;
   document: Document | null;
+  isDone?: boolean;
   className?: string;
 }
 
@@ -15,6 +16,7 @@ export default function FileDropZone({
   side,
   rowId,
   document: doc,
+  isDone = false,
   className = '',
 }: FileDropZoneProps) {
   const { dispatch } = useAppContext();
@@ -121,13 +123,15 @@ export default function FileDropZone({
             <span className="break-all block pr-4" title={doc.name}>
               {doc.name}
             </span>
-            <button
-              onClick={handleRemove}
-              title="Odebrat soubor"
-              className="absolute top-1 right-1 text-gray-400 hover:text-red-500 transition-colors leading-none"
-            >
-              ✕
-            </button>
+            {!isDone && (
+              <button
+                onClick={handleRemove}
+                title="Odebrat soubor"
+                className="absolute top-1 right-1 text-gray-400 hover:text-red-500 transition-colors leading-none"
+              >
+                ✕
+              </button>
+            )}
           </>
         ) : (
           <span className="italic text-gray-500">{'< není vložen >'}</span>

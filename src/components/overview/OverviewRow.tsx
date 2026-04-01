@@ -213,6 +213,7 @@ export default function OverviewRow({ row }: OverviewRowProps) {
         side="invoice"
         rowId={row.id}
         document={invoice}
+        isDone={isDone}
         className="bg-sky-100"
       />
 
@@ -221,6 +222,7 @@ export default function OverviewRow({ row }: OverviewRowProps) {
         side="receipt"
         rowId={row.id}
         document={receipt}
+        isDone={isDone}
         className="bg-emerald-100"
       />
 
