@@ -81,6 +81,28 @@ function appReducer(state: AppState, action: AppAction): AppState {
       };
     }
 
+    case 'REMOVE_DOCUMENT': {
+      const isInvoice = action.side === 'invoice';
+      const listKey = isInvoice ? 'invoices' : 'receipts';
+      const idKey = isInvoice ? 'invoiceId' : 'receiptId';
+
+      const row = state.comparisonRows.find((r) => r.id === action.rowId);
+      const oldDocId = row ? row[idKey] : null;
+
+      const otherIdKey = isInvoice ? 'receiptId' : 'invoiceId';
+      const hasOther = row ? row[otherIdKey] !== null : false;
+
+      return {
+        ...state,
+        [listKey]: state[listKey].filter((d) => d.id !== oldDocId),
+        comparisonRows: state.comparisonRows.map((r) =>
+          r.id === action.rowId
+            ? { ...r, [idKey]: null, matchingPairs: [], status: hasOther ? 'partial' : 'empty' }
+            : r
+        ),
+      };
+    }
+
     case 'UPDATE_DOCUMENT': {
       const updateDoc = (docs: typeof state.invoices) =>
         docs.map((d) => (d.id === action.documentId ? { ...d, ...action.updates } : d));

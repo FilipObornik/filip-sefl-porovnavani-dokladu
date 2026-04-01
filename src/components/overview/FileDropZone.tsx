@@ -87,6 +87,14 @@ export default function FileDropZone({
     e.target.value = '';
   };
 
+  const handleRemove = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      dispatch({ type: 'REMOVE_DOCUMENT', rowId, side });
+    },
+    [dispatch, rowId, side]
+  );
+
   const isLocked = doc !== null;
 
   return (
@@ -109,22 +117,29 @@ export default function FileDropZone({
         title={isLocked ? doc.name : 'Klikněte nebo přetáhněte soubor'}
       >
         {doc ? (
-          <span className="break-all block" title={doc.name}>
-            {doc.name}
-          </span>
+          <>
+            <span className="break-all block pr-4" title={doc.name}>
+              {doc.name}
+            </span>
+            <button
+              onClick={handleRemove}
+              title="Odebrat soubor"
+              className="absolute top-1 right-1 text-gray-400 hover:text-red-500 transition-colors leading-none"
+            >
+              ✕
+            </button>
+          </>
         ) : (
           <span className="italic text-gray-500">{'< není vložen >'}</span>
         )}
 
-        {!isLocked && (
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,.jpg,.jpeg,.png"
-            className="hidden"
-            onChange={handleInputChange}
-          />
-        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.jpg,.jpeg,.png"
+          className="hidden"
+          onChange={handleInputChange}
+        />
       </div>
     </td>
   );

@@ -6,6 +6,7 @@ export type AppAction =
   | { type: 'UPDATE_ROW_NOTE'; rowId: string; note: string }
   | { type: 'UPDATE_ROW_STATUS'; rowId: string; status: ComparisonRow['status'] }
   | { type: 'SET_DOCUMENT'; rowId: string; side: 'invoice' | 'receipt'; document: Document }
+  | { type: 'REMOVE_DOCUMENT'; rowId: string; side: 'invoice' | 'receipt' }
   | { type: 'UPDATE_DOCUMENT'; documentId: string; updates: Partial<Document> }
   | { type: 'SET_MATCHING_PAIRS'; rowId: string; pairs: MatchingPair[] }
   | { type: 'UPDATE_PAIR'; rowId: string; pairId: string; updates: Partial<MatchingPair> }
