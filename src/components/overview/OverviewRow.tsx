@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import { useRouter } from 'next/router';
 import { useAppContext } from '@/state/app-context';
-import { ComparisonRow } from '@/state/types';
+import { ComparisonRow, LineItem } from '@/state/types';
 import FileDropZone from './FileDropZone';
 import { processDocument } from '@/services/document-processor';
 import { compareDocuments } from '@/services/comparison-service';
@@ -62,8 +62,16 @@ export default function OverviewRow({ row }: OverviewRowProps) {
   const totalPriceReceipt = comparison ? comparison.totalPriceReceipt : null;
   const priceOk = comparison ? comparison.priceValid : null;
   const vatOk = comparison ? comparison.vatValid : null;
-  const invoiceItemCount = invoice ? invoice.items.filter((i) => !i.archived).length : null;
-  const receiptItemCount = receipt ? receipt.items.filter((i) => !i.archived).length : null;
+  const sumMj = (items: LineItem[]): number => {
+    const active = items.filter((i) => !i.archived);
+    if (active.length === 0) return 0;
+    if (active.some((i) => i.quantity !== null)) {
+      return active.reduce((acc, i) => acc + (i.quantity ?? 0), 0);
+    }
+    return active.length;
+  };
+  const invoiceItemCount = invoice ? sumMj(invoice.items) : null;
+  const receiptItemCount = receipt ? sumMj(receipt.items) : null;
   const documentClosed = receipt && receipt.status === 'done'
     ? (receipt.documentClosed ?? false)
     : null;
@@ -256,11 +264,11 @@ export default function OverviewRow({ row }: OverviewRowProps) {
         )}
       </td>
 
-      {/* MJ: počet položek faktury / příjemky */}
+      {/* MJ: součet množství (quantity) faktury / příjemky */}
       <td className="px-3 py-2 text-center text-sm whitespace-nowrap">
         {receiptItemCount !== null && invoiceItemCount !== null && (receiptItemCount > 0 || invoiceItemCount > 0) ? (
           <span className={receiptItemCount === invoiceItemCount ? 'text-green-700 font-medium' : 'text-red-700 font-medium'}>
-            {invoiceItemCount}/{receiptItemCount}
+            {formatCzechNumber(invoiceItemCount, 2)}/{formatCzechNumber(receiptItemCount, 2)}
           </span>
         ) : (
           <span className="text-gray-400">–</span>
