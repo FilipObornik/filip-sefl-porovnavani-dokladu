@@ -150,18 +150,7 @@ export default function ItemPanel({ title, items, archivedItems, side, documentI
                 </div>
               ) : (
                 archivedItems.map((item) => (
-                  <div
-                    key={item.id}
-                    className={`bg-gray-200 border border-gray-300 border-l-4 ${itemBorderColor} rounded p-3 mb-2`}
-                  >
-                    <div className="text-sm font-medium text-gray-600 break-words">
-                      {item.item_name}
-                    </div>
-                    <div className="flex items-center justify-between mt-1 text-xs text-gray-500">
-                      <span>{formatCzechNumber(item.quantity, 2)} {item.unit ?? ''}</span>
-                      <span>{formatCzechNumber(item.total_price)} Kč</span>
-                    </div>
-                  </div>
+                  <DraggableItem key={item.id} item={item} side={side} isArchived />
                 ))
               )}
             </div>

@@ -94,6 +94,7 @@ export default function DetailLayout({
       item: LineItem;
       side: 'invoice' | 'receipt';
       pairId?: string; // present when dragging from inside a pair
+      isArchived?: boolean;
     } | undefined;
     if (!dragData) return;
 
@@ -159,6 +160,16 @@ export default function DetailLayout({
     // ── Dragging FROM unmatched panel ─────────────────────────────────────
     if (!overId) return;
 
+    // Drop of archived item on unmatched panel → dearchive
+    if (dragData.isArchived && (overId === DND_UNMATCHED_INVOICE || overId === DND_UNMATCHED_RECEIPT)) {
+      const expectedSide = overId === DND_UNMATCHED_INVOICE ? 'invoice' : 'receipt';
+      if (dragData.side === expectedSide) {
+        const docId = dragData.side === 'invoice' ? invoiceDoc.id : receiptDoc.id;
+        dispatch({ type: 'UPDATE_LINE_ITEM', documentId: docId, itemId: dragData.item.id, updates: { archived: false } });
+      }
+      return;
+    }
+
     // Drop on archive zone → archive item
     if (overId === DND_ARCHIVE_INVOICE || overId === DND_ARCHIVE_RECEIPT) {
       const expectedSide = overId === DND_ARCHIVE_INVOICE ? 'invoice' : 'receipt';
@@ -167,6 +178,12 @@ export default function DetailLayout({
         dispatch({ type: 'UPDATE_LINE_ITEM', documentId: docId, itemId: dragData.item.id, updates: { archived: true } });
       }
       return;
+    }
+
+    // Archived item dropped elsewhere → dearchive first, then handle normally
+    if (dragData.isArchived) {
+      const docId = dragData.side === 'invoice' ? invoiceDoc.id : receiptDoc.id;
+      dispatch({ type: 'UPDATE_LINE_ITEM', documentId: docId, itemId: dragData.item.id, updates: { archived: false } });
     }
 
     if (overId === DND_NEW_PAIR || overId === DND_MATCHING_AREA) {
