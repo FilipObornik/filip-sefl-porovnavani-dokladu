@@ -12,7 +12,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { ComparisonRow, Document, LineItem, VerifyStatus } from '@/state/types';
 import { useAppContext } from '@/state/app-context';
 import { formatCzechNumber } from '@/lib/number-utils';
-import { DND_NEW_PAIR, DND_MATCHING_AREA, DND_UNMATCHED_INVOICE, DND_UNMATCHED_RECEIPT, dndPairDropId, parsePairDropId } from '@/constants/dnd';
+import { DND_NEW_PAIR, DND_MATCHING_AREA, DND_UNMATCHED_INVOICE, DND_UNMATCHED_RECEIPT, DND_ARCHIVE_INVOICE, DND_ARCHIVE_RECEIPT, dndPairDropId, parsePairDropId } from '@/constants/dnd';
 import ItemPanel from './ItemPanel';
 import MatchingArea from './MatchingArea';
 
@@ -104,6 +104,16 @@ export default function DetailLayout({
     if (sourcePairId) {
       if (!overId) return;
 
+      // Drop on archive zone → archive item (unpairing handled automatically by reducer)
+      if (overId === DND_ARCHIVE_INVOICE || overId === DND_ARCHIVE_RECEIPT) {
+        const expectedSide = overId === DND_ARCHIVE_INVOICE ? 'invoice' : 'receipt';
+        if (dragData.side === expectedSide) {
+          const docId = dragData.side === 'invoice' ? invoiceDoc.id : receiptDoc.id;
+          dispatch({ type: 'UPDATE_LINE_ITEM', documentId: docId, itemId: dragData.item.id, updates: { archived: true } });
+        }
+        return;
+      }
+
       // Drop on unmatched panel of same side → unpair
       if (overId === DND_UNMATCHED_INVOICE || overId === DND_UNMATCHED_RECEIPT) {
         if (overId === `unmatched-${dragData.side}`) {
@@ -148,6 +158,16 @@ export default function DetailLayout({
 
     // ── Dragging FROM unmatched panel ─────────────────────────────────────
     if (!overId) return;
+
+    // Drop on archive zone → archive item
+    if (overId === DND_ARCHIVE_INVOICE || overId === DND_ARCHIVE_RECEIPT) {
+      const expectedSide = overId === DND_ARCHIVE_INVOICE ? 'invoice' : 'receipt';
+      if (dragData.side === expectedSide) {
+        const docId = dragData.side === 'invoice' ? invoiceDoc.id : receiptDoc.id;
+        dispatch({ type: 'UPDATE_LINE_ITEM', documentId: docId, itemId: dragData.item.id, updates: { archived: true } });
+      }
+      return;
+    }
 
     if (overId === DND_NEW_PAIR || overId === DND_MATCHING_AREA) {
       // Create new pair with just this item

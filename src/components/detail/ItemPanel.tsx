@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import { DND_UNMATCHED_INVOICE, DND_UNMATCHED_RECEIPT } from '@/constants/dnd';
+import { DND_UNMATCHED_INVOICE, DND_UNMATCHED_RECEIPT, DND_ARCHIVE_INVOICE, DND_ARCHIVE_RECEIPT } from '@/constants/dnd';
 import { Document, LineItem, VerifyStatus, VERIFY_TOLERANCE } from '@/state/types';
 import { useAppContext } from '@/state/app-context';
 import { formatCzechNumber } from '@/lib/number-utils';
@@ -26,6 +26,9 @@ export default function ItemPanel({ title, items, archivedItems, side, documentI
   const [addOpen, setAddOpen] = useState(false);
   const { isOver, setNodeRef: setDropRef } = useDroppable({
     id: side === 'invoice' ? DND_UNMATCHED_INVOICE : DND_UNMATCHED_RECEIPT,
+  });
+  const { isOver: isOverArchive, setNodeRef: setArchiveRef } = useDroppable({
+    id: side === 'invoice' ? DND_ARCHIVE_INVOICE : DND_ARCHIVE_RECEIPT,
   });
   const borderColor = side === 'invoice' ? 'border-blue-400' : 'border-green-400';
   const itemBorderColor = side === 'invoice' ? 'border-l-blue-500' : 'border-l-green-500';
@@ -130,12 +133,23 @@ export default function ItemPanel({ title, items, archivedItems, side, documentI
               ))}
             </div>
             <div className="flex-1" />
-            {archivedItems && archivedItems.length > 0 && (
-              <div>
-                <div className="mt-2 mb-1 pt-2 border-t border-gray-200 text-xs font-semibold text-gray-400 uppercase tracking-wide px-1">
-                  Archivované
+            <div
+              ref={setArchiveRef}
+              className={`mt-2 pt-2 border-t border-gray-200 rounded transition-colors ${
+                isOverArchive ? 'bg-gray-200 ring-2 ring-inset ring-gray-400' : ''
+              }`}
+            >
+              <div className="mb-1 text-xs font-semibold text-gray-400 uppercase tracking-wide px-1">
+                Archivované
+              </div>
+              {(!archivedItems || archivedItems.length === 0) ? (
+                <div className={`text-xs text-center py-2 rounded border border-dashed transition-colors ${
+                  isOverArchive ? 'border-gray-500 text-gray-600' : 'border-gray-300 text-gray-400'
+                }`}>
+                  Přetáhněte sem pro archivaci
                 </div>
-                {archivedItems.map((item) => (
+              ) : (
+                archivedItems.map((item) => (
                   <div
                     key={item.id}
                     className={`bg-gray-200 border border-gray-300 border-l-4 ${itemBorderColor} rounded p-3 mb-2`}
@@ -148,9 +162,9 @@ export default function ItemPanel({ title, items, archivedItems, side, documentI
                       <span>{formatCzechNumber(item.total_price)} Kč</span>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
+                ))
+              )}
+            </div>
           </div>
         )}
       </div>
