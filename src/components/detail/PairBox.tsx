@@ -137,7 +137,7 @@ export default function PairBox({ pair, invoiceItems, receiptItems, invoiceDocId
     const hasError = bothSidesHaveItems && (!qtyMatch || !priceMatch);
 
     const itemContent = (item: LineItem) => (
-      <div className={`${borderClass} px-2 py-0.5 relative group rounded${!isArchived && hasError ? ' bg-red-50' : ''}`}>
+      <div className={`${borderClass} px-2 py-0.5 relative group rounded${!isArchived && hasError ? ' bg-red-100 border-2 border-red-400' : ''}`}>
         {isArchived ? (
           <>
             <div className={`text-sm font-medium text-gray-500${isInvoice ? ' text-right' : ''}`}>{item.item_name}</div>
