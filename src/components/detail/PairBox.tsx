@@ -116,8 +116,8 @@ export default function PairBox({ pair, invoiceItems, receiptItems, invoiceDocId
   const renderItemList = (items: LineItem[], side: 'invoice' | 'receipt', documentId: string) => {
     const isInvoice = side === 'invoice';
     const borderClass = isInvoice
-      ? 'border-l-4 border-l-blue-400'
-      : 'border-r-4 border-r-green-400';
+      ? `border border-gray-200 border-l-4 border-l-blue-400 ${isArchived ? 'bg-gray-100' : 'bg-white'}`
+      : `border border-gray-200 border-r-4 border-r-green-400 ${isArchived ? 'bg-gray-100' : 'bg-white'}`;
     const qtyColor = !bothSidesHaveItems ? 'text-gray-500' : qtyMatch ? 'text-green-700' : 'text-red-700';
     const priceColor = !bothSidesHaveItems ? 'text-gray-500' : priceMatch ? 'text-green-700' : 'text-red-700';
 
