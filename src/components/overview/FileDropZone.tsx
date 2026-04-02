@@ -120,7 +120,7 @@ export default function FileDropZone({
       >
         {doc ? (
           <>
-            <span className="break-all block pr-4" title={doc.name}>
+            <span className={`break-all block ${isDone ? '' : 'pr-4'}`} title={doc.name}>
               {doc.name}
             </span>
             {!isDone && (
