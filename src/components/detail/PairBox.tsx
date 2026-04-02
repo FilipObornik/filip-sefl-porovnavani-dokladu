@@ -21,11 +21,13 @@ function DraggablePairItem({
   item,
   side,
   pairId,
+  className,
   children,
 }: {
   item: LineItem;
   side: 'invoice' | 'receipt';
   pairId: string;
+  className?: string;
   children: React.ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -39,7 +41,7 @@ function DraggablePairItem({
       {...listeners}
       {...attributes}
       style={{ opacity: isDragging ? 0.4 : 1 }}
-      className="cursor-grab active:cursor-grabbing"
+      className={`cursor-grab active:cursor-grabbing${className ? ` ${className}` : ''}`}
     >
       {children}
     </div>
@@ -62,7 +64,7 @@ function PairDropZone({
   return (
     <div
       ref={setNodeRef}
-      className={`w-1/2 min-w-0 rounded transition-colors ${
+      className={`w-1/2 min-w-0 rounded transition-colors flex flex-col ${
         isOver ? 'bg-blue-50 ring-2 ring-blue-300' : ''
       }`}
     >
@@ -135,9 +137,10 @@ export default function PairBox({ pair, invoiceItems, receiptItems, invoiceDocId
       (item.edited_fields ?? []).includes(field);
 
     const hasError = bothSidesHaveItems && (!qtyMatch || !priceMatch);
+    const isSingle = items.length === 1;
 
     const itemContent = (item: LineItem) => (
-      <div className={`${borderClass} px-2 py-0.5 relative group rounded${!isArchived && hasError ? ' bg-red-100 border-2 border-red-400' : ''}`}>
+      <div className={`${borderClass} px-2 py-0.5 relative group rounded${isSingle ? ' flex-1' : ''}${!isArchived && hasError ? ' bg-red-100 border-2 border-red-400' : ''}`}>
         {isArchived ? (
           <>
             <div className={`text-sm font-medium text-gray-500${isInvoice ? ' text-right' : ''}`}>{item.item_name}</div>
@@ -190,12 +193,12 @@ export default function PairBox({ pair, invoiceItems, receiptItems, invoiceDocId
     );
 
     return (
-      <div className="space-y-1">
+      <div className={isSingle ? 'flex flex-col flex-1' : 'space-y-1'}>
         {items.map((item) => (
           isArchived ? (
-            <div key={item.id}>{itemContent(item)}</div>
+            <div key={item.id} className={isSingle ? 'flex flex-col flex-1' : ''}>{itemContent(item)}</div>
           ) : (
-            <DraggablePairItem key={item.id} item={item} side={side} pairId={pair.id}>
+            <DraggablePairItem key={item.id} item={item} side={side} pairId={pair.id} className={isSingle ? 'flex flex-col flex-1' : ''}>
               {itemContent(item)}
             </DraggablePairItem>
           )
@@ -232,7 +235,7 @@ export default function PairBox({ pair, invoiceItems, receiptItems, invoiceDocId
       <div className="flex">
         {/* Invoice side */}
         {isArchived ? (
-          <div className="w-1/2 min-w-0 rounded">{invoiceSideContent}</div>
+          <div className="w-1/2 min-w-0 rounded flex flex-col">{invoiceSideContent}</div>
         ) : (
           <PairDropZone pairId={pair.id} side="invoice">{invoiceSideContent}</PairDropZone>
         )}
@@ -242,7 +245,7 @@ export default function PairBox({ pair, invoiceItems, receiptItems, invoiceDocId
 
         {/* Receipt side */}
         {isArchived ? (
-          <div className="w-1/2 min-w-0 rounded">{receiptSideContent}</div>
+          <div className="w-1/2 min-w-0 rounded flex flex-col">{receiptSideContent}</div>
         ) : (
           <PairDropZone pairId={pair.id} side="receipt">{receiptSideContent}</PairDropZone>
         )}
